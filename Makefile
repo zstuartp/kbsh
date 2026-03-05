@@ -261,20 +261,20 @@ run: $(TARGET)
 	$(Q)./$(TARGET)
 
 test: $(TARGET)
-	$(call log,TEST,scripts/kbsh-test)
+	$(call log,TEST,test/smoke)
 	$(Q)set -eu; \
-	hello="$$(./$(TARGET) scripts/kbsh-test/hello.sh)"; \
+	hello="$$(./$(TARGET) test/smoke/hello.sh)"; \
 	if [ "$$hello" != "Hello, World!" ]; then \
 	echo "test failed: hello.sh output mismatch: $$hello"; \
 	exit 1; \
 	fi; \
-	line="$$(./$(TARGET) scripts/kbsh-test/line-continue.sh)"; \
+	line="$$(./$(TARGET) test/smoke/line-continue.sh)"; \
 	if [ "$$line" != "Hello, World!" ]; then \
 	echo "test failed: line-continue.sh output mismatch: $$line"; \
 	exit 1; \
 	fi; \
 	set +e; \
-	./$(TARGET) scripts/kbsh-test/unexpected-eof.sh >/dev/null 2>&1; \
+	./$(TARGET) test/smoke/unexpected-eof.sh >/dev/null 2>&1; \
 	unexpected_status=$$?; \
 	set -e; \
 	if [ "$$unexpected_status" -eq 0 ]; then \

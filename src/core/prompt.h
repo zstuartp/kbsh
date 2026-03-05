@@ -26,7 +26,9 @@ struct Prompt {
 	char *dflt_ch;
 	char *root_ch;
 	char *scnd_ch;
-} prompt;
+};
+
+extern struct Prompt prompt;
 
 void kbsh_prompt_exit(void);
 void kbsh_prompt_init(void);

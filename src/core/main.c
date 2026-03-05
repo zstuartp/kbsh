@@ -54,8 +54,13 @@ static void print_version(void);
 
 int main(int argc, char **argv)
 {
+	struct { int c; char *c_arg; int i; int s; } kbsh_options;
+	int stdin_isatty;
+	int stderr_isatty;
 	int optc;
 	int lose;
+
+	memset(&kbsh_options, 0, sizeof(kbsh_options));
 	program_name = argv[0];
 	lose = 0;
 
@@ -67,7 +72,6 @@ int main(int argc, char **argv)
 #endif/*ENABLE_NLS*/
 
 	stdin_isatty = isatty(STDIN_FILENO);
-	stdout_isatty = isatty(STDIN_FILENO);
 	stderr_isatty = isatty(STDERR_FILENO);
 
 #if defined(KBSH_PORTABLE_PROFILE)
@@ -212,7 +216,7 @@ int main(int argc, char **argv)
 	} else {
 		/* Interactive mode */
 		kbsh_input_init();
-		kbsh_input_main();
+		kbsh_exit(kbsh_run(KBSH_RUN_MODE_INTERACTIVE, NULL, stdout));
 	}
 
 	kbsh_exit(0);

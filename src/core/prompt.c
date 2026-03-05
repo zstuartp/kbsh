@@ -31,6 +31,8 @@
 #include "core/env.h"
 #include "core/prompt.h"
 
+struct Prompt prompt;
+
 void kbsh_prompt_exit(void)
 {
 	return;

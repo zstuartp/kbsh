@@ -23,8 +23,7 @@
 
 void kbsh_input_exit(void);
 void kbsh_input_init(void);
-void kbsh_input_main(void);
-
-char *history_fname;
+void kbsh_input_save_history(void);
+char *kbsh_input_readline(const char *prompt_str);
 
 #endif/*INPUT_H*/

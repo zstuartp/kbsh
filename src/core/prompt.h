@@ -15,4 +15,4 @@ extern struct Prompt prompt;
 void kbsh_prompt_exit(void);
 void kbsh_prompt_init(void);
 
-#endif/*PROMPT_H*/
+#endif /*PROMPT_H*/

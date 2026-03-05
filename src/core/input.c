@@ -2,28 +2,25 @@
 
 #include <config.h>
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
-#include <readline/readline.h>
 #include <readline/history.h>
+#include <readline/readline.h>
 
-#include "core/kbsh.h"
-#include "core/input.h"
 #include "core/env.h"
+#include "core/input.h"
+#include "core/kbsh.h"
 #include "core/prompt.h"
 
 static char history_fname[PATH_MAX + 32];
 
 static void kbsh_create_histfname(void);
 
-void kbsh_input_exit(void)
-{
-	kbsh_prompt_exit();
-}
+void kbsh_input_exit(void) { kbsh_prompt_exit(); }
 
 void kbsh_input_init(void)
 {
@@ -35,10 +32,7 @@ void kbsh_input_init(void)
 	rl_bind_key('\t', rl_complete);
 }
 
-void kbsh_input_save_history(void)
-{
-	write_history(history_fname);
-}
+void kbsh_input_save_history(void) { write_history(history_fname); }
 
 /*
  * Read one line via readline.  Returns a malloc'd string that the caller
@@ -72,6 +66,6 @@ static void kbsh_create_histfname(void)
 {
 	if (!env.home)
 		return;
-	snprintf(history_fname, sizeof(history_fname),
-		 "%s/.kbsh_history", env.home);
+	snprintf(
+	    history_fname, sizeof(history_fname), "%s/.kbsh_history", env.home);
 }

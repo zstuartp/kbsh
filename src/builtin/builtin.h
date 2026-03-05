@@ -15,4 +15,4 @@ int kbsh_find_builtin(struct Buffer *b);
 extern struct Builtin bi_cd;
 extern struct Builtin bi_exit;
 
-#endif/*COMMAND_H*/
+#endif /*COMMAND_H*/

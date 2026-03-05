@@ -14,4 +14,4 @@
 #define N_(str) str
 #endif
 
-#endif/*LOCALIZE_H*/
+#endif /*LOCALIZE_H*/

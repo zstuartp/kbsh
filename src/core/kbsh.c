@@ -142,7 +142,8 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 
 	if (state->run_mode_id == KBSH_RUN_MODE_INTERACTIVE) {
 		rl_prompt = (state->state_id == KBSH_STATE_READ_MORE)
-			? prompt.scnd_ch : prompt.crnt_ch;
+				? prompt.scnd_ch
+				: prompt.crnt_ch;
 		line = kbsh_input_readline(rl_prompt);
 		if (!line) {
 			printf("exit\n");
@@ -163,8 +164,8 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 		}
 		old_len = strlen(state->buffer.full);
 		len = strlen(line);
-		if (kbsh_arena_alloc(arena, old_len + len + 1, 1, &arena_buf)
-		    != KBSH_ARENA_SUCCESS) {
+		if (kbsh_arena_alloc(arena, old_len + len + 1, 1, &arena_buf) !=
+		    KBSH_ARENA_SUCCESS) {
 			free(line);
 			kbsh_exit(1);
 		}
@@ -185,8 +186,8 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 	}
 
 	len = strlen(line);
-	if (kbsh_arena_alloc(arena, len + 1, 1, &arena_buf)
-	    != KBSH_ARENA_SUCCESS) {
+	if (kbsh_arena_alloc(arena, len + 1, 1, &arena_buf) !=
+	    KBSH_ARENA_SUCCESS) {
 		free(line);
 		kbsh_exit(1);
 	}

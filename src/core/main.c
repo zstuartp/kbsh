@@ -14,8 +14,8 @@
 
 #include "localize.h"
 
-#include "core/kbsh.h"
 #include "core/input.h"
+#include "core/kbsh.h"
 
 static int print_help_flag;
 
@@ -36,7 +36,12 @@ static void print_version(void);
 
 int main(int argc, char **argv)
 {
-	struct { int c; char *c_arg; int i; int s; } kbsh_options;
+	struct {
+		int c;
+		char *c_arg;
+		int i;
+		int s;
+	} kbsh_options;
 	int stdin_isatty;
 	int stderr_isatty;
 	int optc;
@@ -51,7 +56,7 @@ int main(int argc, char **argv)
 #if ENABLE_NLS
 	bindtextdomain(PACKAGE, LOCALEDIR);
 	textdomain(PACKAGE);
-#endif/*ENABLE_NLS*/
+#endif /*ENABLE_NLS*/
 
 	stdin_isatty = isatty(STDIN_FILENO);
 	stderr_isatty = isatty(STDERR_FILENO);
@@ -159,12 +164,13 @@ int main(int argc, char **argv)
 	}
 
 	if (lose) {
-		fprintf(stderr, "Try \"%s --help\" for more information\n",
+		fprintf(stderr,
+			"Try \"%s --help\" for more information\n",
 			program_name);
 		exit(1);
 	}
 
-	kbsh_init();/* initializer for kbsh */
+	kbsh_init(); /* initializer for kbsh */
 
 	if (kbsh_options.c) {
 		/* Command string mode: -c [string] [arg ...] */
@@ -177,7 +183,8 @@ int main(int argc, char **argv)
 		rewind(tmp);
 		kbsh_positional_params = argv + optind;
 		kbsh_positional_param_count = argc - optind;
-		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp, stdout);
+		run_status =
+		    kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp, stdout);
 		fclose(tmp);
 		kbsh_exit(run_status);
 	} else if (optind < argc) {
@@ -185,8 +192,11 @@ int main(int argc, char **argv)
 		int run_status;
 		FILE *fp = fopen(argv[optind], "r");
 		if (!fp) {
-			fprintf(stderr, "%s: %s: %s\n", program_name,
-				argv[optind], strerror(errno));
+			fprintf(stderr,
+				"%s: %s: %s\n",
+				program_name,
+				argv[optind],
+				strerror(errno));
 			kbsh_exit(1);
 		}
 		program_name = argv[optind];
@@ -198,7 +208,8 @@ int main(int argc, char **argv)
 	} else if ((!stdin_isatty || !stderr_isatty) &&
 		   (!kbsh_options.i && !kbsh_options.c)) {
 		/* Pipe mode: stdin is not a tty */
-		kbsh_exit(kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, stdin, stdout));
+		kbsh_exit(
+		    kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, stdin, stdout));
 	} else {
 		/* Interactive mode */
 		kbsh_input_init();
@@ -211,45 +222,41 @@ int main(int argc, char **argv)
 
 static void print_help(void)
 {
-	printf(
-"%s %s\n", PACKAGE_NAME, VERSION);
-	printf(_(
-"Usage: %s [Long options] [Shell options] [File]\n"), program_name);
+	printf("%s %s\n", PACKAGE_NAME, VERSION);
+	printf(_("Usage: %s [Long options] [Shell options] [File]\n"),
+	       program_name);
 	puts("");
-	puts(_(
-"Long options:\n"
-"  --help                Print this help text and exit\n"
-"  --version             Print version text and exit"));
+	puts(_("Long options:\n"
+	       "  --help                Print this help text and exit\n"
+	       "  --version             Print version text and exit"));
 	puts("");
-	puts(_(
-"Shell options:\n"
-"  -c [string]           Read commands from [string]\n"
-"  -i                    Run kbsh as an interactive shell\n"
-"  -s                    Read commands from standard input\n"
-"  -abefhkmnptuvxBCHP    Only used for compatibility"));
+	puts(_("Shell options:\n"
+	       "  -c [string]           Read commands from [string]\n"
+	       "  -i                    Run kbsh as an interactive shell\n"
+	       "  -s                    Read commands from standard input\n"
+	       "  -abefhkmnptuvxBCHP    Only used for compatibility"));
 	puts("");
-	puts(_(
-"File:\n"
-"  Read commands from a plain-text file and exit"));
+	puts(_("File:\n"
+	       "  Read commands from a plain-text file and exit"));
 	puts("");
-	printf(_(
-"Report bugs to: %s\n"), PACKAGE_BUGREPORT);
+	printf(_("Report bugs to: %s\n"), PACKAGE_BUGREPORT);
 #ifdef PACKAGE_PACKAGER_BUG_REPORTS
-	printf(_(
-"Report %s bugs to: %s\n"), PACKAGE_PACKAGER, PACKAGE_PACKAGER_BUG_REPORTS);
+	printf(_("Report %s bugs to: %s\n"),
+	       PACKAGE_PACKAGER,
+	       PACKAGE_PACKAGER_BUG_REPORTS);
 #endif
-	printf(_(
-"%s home page: %s\n"), PACKAGE_NAME, "<https://github.com/zstuartp/kbsh/>");
+	printf(_("%s home page: %s\n"),
+	       PACKAGE_NAME,
+	       "<https://github.com/zstuartp/kbsh/>");
 }
 
 static void print_version(void)
 {
-	printf(
-"%s %s\n", PACKAGE_NAME, VERSION);
+	printf("%s %s\n", PACKAGE_NAME, VERSION);
 	puts("");
-	puts(
-"Copyright (C) 2011, 2026 Zackary Parsons\n"
-"License: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>\n"
-"This is free software; you are free to change and redistribute it.\n"
-"This program has NO WARRANTY, to the extent permitted by law");
+	puts("Copyright (C) 2011, 2026 Zackary Parsons\n"
+	     "License: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>\n"
+	     "This is free software; you are free to change and redistribute "
+	     "it.\n"
+	     "This program has NO WARRANTY, to the extent permitted by law");
 }

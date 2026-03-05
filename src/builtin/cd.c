@@ -2,18 +2,18 @@
 
 #include <config.h>
 
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <unistd.h>
 
-#include "core/kbsh.h"
+#include "builtin/builtin.h"
 #include "core/buffer.h"
 #include "core/env.h"
-#include "builtin/builtin.h"
+#include "core/kbsh.h"
 
 int kbsh_builtin_cd(struct Buffer *b)
 {
@@ -51,7 +51,7 @@ int kbsh_builtin_cd(struct Buffer *b)
 	if (chdir(cd_path))
 		perror("kbsh: cd");
 	else {
-done:
+	done:
 		if (!getcwd(env.cwd, sizeof(env.cwd)))
 			kbsh_exit(errno);
 		if (setenv("PWD", env.cwd, 1))
@@ -61,7 +61,4 @@ end:
 	return 0;
 }
 
-struct Builtin bi_cd = {
-	"cd",
-	kbsh_builtin_cd
-};
+struct Builtin bi_cd = { "cd", kbsh_builtin_cd };

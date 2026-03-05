@@ -9,7 +9,7 @@
 #define KBSH_ARENA_DEFAULT_ALIGN (sizeof(void *))
 
 enum kbsh_arena_return_codes {
-	KBSH_ARENA_SUCCESS=0,
+	KBSH_ARENA_SUCCESS = 0,
 	KBSH_ARENA_ERROR_ARENA_NULL,
 	KBSH_ARENA_ERROR_POOL_NULL,
 	KBSH_ARENA_ERROR_OUTPTR_NULL,
@@ -22,15 +22,13 @@ enum kbsh_arena_return_codes {
 };
 
 struct kbsh_arena {
-	unsigned char *buffer;	/* stack-based memory buffer */
-	size_t size;		/* buffer size, in bytes */
-	size_t offset;		/* current write head */
-	size_t peak_fill;	/* maximum offset reached */
+	unsigned char *buffer; /* stack-based memory buffer */
+	size_t size;	       /* buffer size, in bytes */
+	size_t offset;	       /* current write head */
+	size_t peak_fill;      /* maximum offset reached */
 };
 
-int kbsh_arena_init(struct kbsh_arena *arena,
-		    unsigned char *pool,
-		    size_t size);
+int kbsh_arena_init(struct kbsh_arena *arena, unsigned char *pool, size_t size);
 
 void kbsh_arena_destroy(struct kbsh_arena *arena);
 
@@ -45,4 +43,4 @@ int kbsh_arena_alloc(struct kbsh_arena *arena,
 		     size_t align,
 		     unsigned char **out);
 
-#endif/*KBSH_ARENA_H*/
+#endif /*KBSH_ARENA_H*/

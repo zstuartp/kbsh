@@ -2,21 +2,18 @@
 
 #include <config.h>
 
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 
-#include "core/kbsh.h"
 #include "core/env.h"
+#include "core/kbsh.h"
 
 struct Env env;
 
 static void kbsh_env_get_cwd_end(void);
 
-void kbsh_env_exit(void)
-{
-	return;
-}
+void kbsh_env_exit(void) { return; }
 
 void kbsh_env_init(void)
 {

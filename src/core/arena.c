@@ -25,9 +25,7 @@ static int kbsh_arena_align_offset(size_t offset, size_t alignment, size_t *out)
 	return KBSH_ARENA_SUCCESS;
 }
 
-int kbsh_arena_init(struct kbsh_arena *arena,
-		    unsigned char *pool,
-		    size_t size)
+int kbsh_arena_init(struct kbsh_arena *arena, unsigned char *pool, size_t size)
 {
 	if (arena == NULL) {
 		return KBSH_ARENA_ERROR_ARENA_NULL;

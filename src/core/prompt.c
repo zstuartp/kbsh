@@ -2,23 +2,20 @@
 
 #include <config.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include <unistd.h>
 
-#include "core/kbsh.h"
 #include "core/env.h"
+#include "core/kbsh.h"
 #include "core/prompt.h"
 
 struct Prompt prompt;
 
-void kbsh_prompt_exit(void)
-{
-	return;
-}
+void kbsh_prompt_exit(void) { return; }
 
 void kbsh_prompt_init(void)
 {

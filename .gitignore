@@ -62,6 +62,7 @@ Makefile
 stamp-h1
 *.status
 /build/
+po/*.mo
 
 #
 # Don't ignore

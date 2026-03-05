@@ -2,19 +2,19 @@
 
 #include <config.h>
 
-#include <string.h>
 #include <errno.h>
+#include <string.h>
 
-#include "core/kbsh.h"
-#include "core/buffer.h"
 #include "builtin/builtin.h"
+#include "core/buffer.h"
+#include "core/kbsh.h"
 
 int kbsh_find_builtin(struct Buffer *b)
 {
 	if (!b)
 		kbsh_exit(EINVAL);
 	/* find builtin commands */
-	if (!b->word || !*b->word)/* empty input */
+	if (!b->word || !*b->word) /* empty input */
 		goto found;
 
 	if (!strcmp(b->word[0], bi_cd.command)) {

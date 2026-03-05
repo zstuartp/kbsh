@@ -25,4 +25,4 @@ int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out);
 
 void kbsh_main(struct Buffer *buffer);
 
-#endif/*KBSH_H*/
+#endif /*KBSH_H*/

@@ -3,10 +3,10 @@
 #include <config.h>
 
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 
 #include "localize.h"
 
@@ -52,7 +52,8 @@ static void parse_newline(struct kbsh_parse_state *ps)
 		/* Newline in the middle of an accumulated buffer while quoted:
 		 * preserve it as a literal character in the output. */
 		if (!ps->ignore_next && ps->in_quote) {
-			ps->buffer->pars[ps->bpind] = ps->buffer->full[ps->bfind];
+			ps->buffer->pars[ps->bpind] =
+			    ps->buffer->full[ps->bfind];
 			ps->bpind++;
 			if (!ps->in_arg) {
 				ps->in_arg = 1;
@@ -222,8 +223,8 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 		return;
 	} else if (nc == '{') {
 		ps->bfind += 2;
-		while ((c = ps->buffer->full[ps->bfind]) != '}' && c != '\0'
-		       && name_len < sizeof(name) - 1) {
+		while ((c = ps->buffer->full[ps->bfind]) != '}' && c != '\0' &&
+		       name_len < sizeof(name) - 1) {
 			name[name_len++] = ps->buffer->full[ps->bfind++];
 		}
 		name[name_len] = '\0';
@@ -238,9 +239,9 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 			value = "";
 	} else if (isalpha((unsigned char)nc) || nc == '_') {
 		ps->bfind++;
-		while ((c = ps->buffer->full[ps->bfind]) != '\0'
-		       && (isalnum((unsigned char)c) || c == '_')
-		       && name_len < sizeof(name) - 1) {
+		while ((c = ps->buffer->full[ps->bfind]) != '\0' &&
+		       (isalnum((unsigned char)c) || c == '_') &&
+		       name_len < sizeof(name) - 1) {
 			name[name_len++] = ps->buffer->full[ps->bfind++];
 		}
 		ps->bfind--;
@@ -326,10 +327,20 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 		sq = 0;
 		ign = 0;
 		for (i = 0; (c = ps.buffer->full[i]) != '\0'; i++) {
-			if (ign) { ign = 0; continue; }
-			if (c == '\\' && !sq) { ign = 1; continue; }
-			if (c == '\'') { sq = !sq; continue; }
-			if (c != '$' || sq) continue;
+			if (ign) {
+				ign = 0;
+				continue;
+			}
+			if (c == '\\' && !sq) {
+				ign = 1;
+				continue;
+			}
+			if (c == '\'') {
+				sq = !sq;
+				continue;
+			}
+			if (c != '$' || sq)
+				continue;
 
 			i++;
 			nc = ps.buffer->full[i];
@@ -338,32 +349,37 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 				sprintf(sbuf, "%d", last_status);
 				ps.buffer->pars_size += strlen(sbuf);
 			} else if (nc == '#') {
-				sprintf(sbuf, "%d", kbsh_positional_param_count);
+				sprintf(
+				    sbuf, "%d", kbsh_positional_param_count);
 				ps.buffer->pars_size += strlen(sbuf);
 			} else if (nc >= '0' && nc <= '9') {
 				if (nc == '0') {
 					if (program_name)
-						ps.buffer->pars_size += strlen(program_name);
+						ps.buffer->pars_size +=
+						    strlen(program_name);
 				} else {
 					int idx = nc - '1';
 					if (idx < kbsh_positional_param_count)
-						ps.buffer->pars_size +=
-						    strlen(kbsh_positional_params[idx]);
+						ps.buffer->pars_size += strlen(
+						    kbsh_positional_params
+							[idx]);
 				}
 			} else if (nc == '@' || nc == '*') {
 				int pi;
-				for (pi = 0; pi < kbsh_positional_param_count; pi++) {
+				for (pi = 0; pi < kbsh_positional_param_count;
+				     pi++) {
 					ps.buffer->pars_size +=
 					    strlen(kbsh_positional_params[pi]);
 				}
 				if (kbsh_positional_param_count > 1)
 					ps.buffer->pars_size +=
-					    (size_t)(kbsh_positional_param_count - 1);
+					    (size_t)(kbsh_positional_param_count -
+						     1);
 			} else if (nc == '{') {
 				i++;
 				nl = 0;
-				while ((c = ps.buffer->full[i]) != '}' && c != '\0'
-				       && nl < sizeof(name) - 1)
+				while ((c = ps.buffer->full[i]) != '}' &&
+				       c != '\0' && nl < sizeof(name) - 1)
 					name[nl++] = ps.buffer->full[i++];
 				name[nl] = '\0';
 				val = getenv(name);
@@ -371,9 +387,10 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 					ps.buffer->pars_size += strlen(val);
 			} else if (isalpha((unsigned char)nc) || nc == '_') {
 				nl = 0;
-				while ((c = ps.buffer->full[i]) != '\0'
-				       && (isalnum((unsigned char)c) || c == '_')
-				       && nl < sizeof(name) - 1)
+				while (
+				    (c = ps.buffer->full[i]) != '\0' &&
+				    (isalnum((unsigned char)c) || c == '_') &&
+				    nl < sizeof(name) - 1)
 					name[nl++] = ps.buffer->full[i++];
 				i--;
 				name[nl] = '\0';
@@ -387,7 +404,8 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 	{
 		unsigned char *out = NULL;
 
-		if (kbsh_arena_alloc(arena, ps.buffer->pars_size,
+		if (kbsh_arena_alloc(arena,
+				     ps.buffer->pars_size,
 				     KBSH_ARENA_DEFAULT_ALIGN,
 				     &out) != KBSH_ARENA_SUCCESS)
 			kbsh_exit(ENOMEM);
@@ -491,7 +509,8 @@ static void kbsh_parse_tok(struct kbsh_parse_state *ps)
 	{
 		unsigned char *out = NULL;
 
-		if (kbsh_arena_alloc(ps->arena, word_alloc,
+		if (kbsh_arena_alloc(ps->arena,
+				     word_alloc,
 				     KBSH_ARENA_DEFAULT_ALIGN,
 				     &out) != KBSH_ARENA_SUCCESS)
 			kbsh_exit(ENOMEM);

@@ -4,9 +4,9 @@
 
 #include <stdlib.h>
 
-#include "core/kbsh.h"
-#include "core/buffer.h"
 #include "builtin/builtin.h"
+#include "core/buffer.h"
+#include "core/kbsh.h"
 
 int kbsh_builtin_exit(struct Buffer *b)
 {
@@ -19,7 +19,4 @@ end:
 	return 1;
 }
 
-struct Builtin bi_exit = {
-	"exit",
-	kbsh_builtin_exit
-};
+struct Builtin bi_exit = { "exit", kbsh_builtin_exit };

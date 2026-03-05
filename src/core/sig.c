@@ -11,7 +11,7 @@
 
 void kbsh_sig_init(void)
 {
-	signal(SIGHUP,  kbsh_sig_exit);/*terminal closed*/
-	signal(SIGQUIT, kbsh_sig_exit);/*ctrl-\*/
-	signal(SIGTERM, kbsh_sig_exit);/*system shutdown*/
+	signal(SIGHUP, kbsh_sig_exit);	/*terminal closed*/
+	signal(SIGQUIT, kbsh_sig_exit); /*ctrl-\*/
+	signal(SIGTERM, kbsh_sig_exit); /*system shutdown*/
 }

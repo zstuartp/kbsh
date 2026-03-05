@@ -19,4 +19,4 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 				  struct kbsh_arena *arena,
 				  int last_status);
 
-#endif/*PARSE_H*/
+#endif /*PARSE_H*/

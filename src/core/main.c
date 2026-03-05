@@ -1,13 +1,12 @@
 /*
  * The K3BACON Shell (kbsh).
- * Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011, 2012 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -257,7 +256,7 @@ static void print_help(void)
 "Report %s bugs to: %s\n"), PACKAGE_PACKAGER, PACKAGE_PACKAGER_BUG_REPORTS);
 #endif
 	printf(_(
-"%s home page: %s\n"), PACKAGE_NAME, "<https://github.com/k3bacon/kbsh/>");
+"%s home page: %s\n"), PACKAGE_NAME, "<https://github.com/zstuartp/kbsh/>");
 }
 
 static void print_version(void)
@@ -267,7 +266,7 @@ static void print_version(void)
 	puts("");
 	puts(
 "Copyright (C) 2012 Zack Parsons\n"
-"License: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n"
+"License: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n"
 "This is free software; you are free to change and redistribute it.\n"
 "This program has NO WARRANTY, to the extent permitted by law");
 }

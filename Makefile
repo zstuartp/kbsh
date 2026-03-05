@@ -24,6 +24,7 @@ BINDIR          ?= $(PREFIX)/bin
 DESTDIR         ?=
 LOCALEDIR       ?= $(PREFIX)/share/locale
 ENABLE_NLS      ?= 0
+TEST_POSIX_RUNNER ?= test/posix/run.sh
 
 UNAME_S         ?= $(shell uname -s)
 CC              ?= cc
@@ -60,6 +61,12 @@ else
   CFLAGS += -O2
 endif
 
+SANITIZE ?=
+ifneq ($(strip $(SANITIZE)),)
+  CFLAGS += -O1 -g -fno-omit-frame-pointer -fsanitize=$(SANITIZE)
+  LDFLAGS += -fsanitize=$(SANITIZE)
+endif
+
 READLINE_CFLAGS := $(shell $(PKG_CONFIG) --cflags readline 2>/dev/null)
 READLINE_LIBS   := $(shell $(PKG_CONFIG) --libs readline 2>/dev/null)
 READLINE_PREFIX ?= $(shell brew --prefix readline 2>/dev/null)
@@ -85,7 +92,9 @@ ifeq ($(ENABLE_NLS),1)
 endif
 
 # ---------- Targets ----------
-.PHONY: all clean install install-user uninstall uninstall-user run test print-vars version
+.PHONY: all clean install install-user uninstall uninstall-user run
+.PHONY: test test-posix test-asan test-ubsan
+.PHONY: print-vars version
 
 all: $(TARGET)
 
@@ -231,6 +240,23 @@ test: $(TARGET)
 	fi; \
 	echo "kbsh tests passed"
 
+test-posix: $(TARGET)
+	$(call log,TEST,$(TEST_POSIX_RUNNER))
+	$(Q)ROOT="$(CURDIR)" TARGET="$(CURDIR)/$(TARGET)" \
+		sh "$(TEST_POSIX_RUNNER)"
+
+test-asan:
+	$(call log,TEST,asan)
+	$(Q)$(MAKE) --no-print-directory clean FORCE=1
+	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=address all
+	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=address test
+
+test-ubsan:
+	$(call log,TEST,ubsan)
+	$(Q)$(MAKE) --no-print-directory clean FORCE=1
+	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=undefined all
+	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=undefined test
+
 version:
 	@echo "$(VERSION)"
 
@@ -242,5 +268,7 @@ print-vars:
 	@echo "BINDIR=$(BINDIR)"
 	@echo "LOCALEDIR=$(LOCALEDIR)"
 	@echo "ENABLE_NLS=$(ENABLE_NLS)"
+	@echo "SANITIZE=$(SANITIZE)"
+	@echo "TEST_POSIX_RUNNER=$(TEST_POSIX_RUNNER)"
 	@echo "READLINE_CFLAGS=$(READLINE_CFLAGS)"
 	@echo "READLINE_LIBS=$(READLINE_LIBS)"

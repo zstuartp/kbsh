@@ -279,90 +279,6 @@ static void parse_default(struct kbsh_parse_state *ps)
 	ps->bpind++;
 }
 
-/* ------------------------------------------------------------------
- * KBSH_FAST_WORD_MAX — hard cap on words in the fast path.
- * Commands with more than this many whitespace-separated tokens fall
- * through to the slow path.  512 is unreachable in practice.
- * ------------------------------------------------------------------ */
-#define KBSH_FAST_WORD_MAX 512
-
-/* ------------------------------------------------------------------
- * kbsh_parse_fast  —  one-pass tokenizer for plain-text commands.
- *
- * Replaces three separate libc scans:
- *   strpbrk(6KB)       — old fast-path guard
- *   strcspn × words    — old fast_tokenize
- *   strtok_r(6KB)      — old kbsh_parse_tok
- *
- * Single combined pass: strcspn(p, " \t$~\\'\"") per word segment
- * simultaneously finds word boundaries AND detects special chars.
- * If a special char is found, returns 0 so kbsh_parse falls through
- * to the full slow path unchanged (buf is unmodified at that point).
- * On success, word pointers are committed to the arena and 1 is
- * returned.
- * ------------------------------------------------------------------ */
-static int kbsh_parse_fast(struct Buffer *b, struct kbsh_arena *arena)
-{
-	char *word_starts[KBSH_FAST_WORD_MAX];
-	size_t word_lens[KBSH_FAST_WORD_MAX];
-	size_t nwords = 0;
-	char *p = b->full;
-	size_t span;
-	unsigned char *out;
-	size_t i;
-
-	while (*p != '\0') {
-		/* skip inter-word whitespace and trailing newline */
-		p += strspn(p, " \t\n");
-		if (*p == '\0')
-			break;
-
-		/* word run: stop at whitespace, newline, or any special char.
-		 * If span == 0 the current char is special — abort to slow
-		 * path without having modified buf at all.
-		 * If span > 0 but the terminating char is neither whitespace
-		 * nor NUL nor newline, a special char follows — same. */
-		span = strcspn(p, " \t\n$~\\'\"");
-		if (span == 0)
-			return 0; /* leading special char — slow path */
-
-		if (p[span] != '\0' && p[span] != ' ' && p[span] != '\t' &&
-		    p[span] != '\n')
-			return 0; /* special char after word — slow path */
-
-		if (nwords >= KBSH_FAST_WORD_MAX)
-			return 0; /* too many words — slow path */
-
-		word_starts[nwords] = p;
-		word_lens[nwords] = span;
-		nwords++;
-		p += span;
-	}
-
-	/* All words are plain.  Commit: null-terminate each word in the
-	 * arena buffer and build the word pointer array. */
-	if (kbsh_arena_alloc(
-		arena, sizeof(char *) * (nwords + 1), sizeof(void *), &out) !=
-	    KBSH_ARENA_SUCCESS)
-		kbsh_exit(ENOMEM);
-
-	b->word = (char **)out;
-	for (i = 0; i < nwords; i++) {
-		/* Null-terminate each word in-place in the arena buffer.
-		 * The char at [word_lens[i]] is guaranteed to be ' ', '\t',
-		 * '\n', or '\0' — all safe to overwrite with '\0'. */
-		word_starts[i][word_lens[i]] = '\0';
-		b->word[i] = word_starts[i];
-	}
-	b->word[nwords] = NULL;
-	b->word_used = nwords;
-	b->word_size = nwords + 1;
-	b->pars = b->full;
-	b->pars_size = b->full_size + 1;
-
-	return 1;
-}
-
 enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 				  struct kbsh_arena *arena,
 				  int last_status)
@@ -379,126 +295,29 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 	ps.loop = 1;
 
 	ps.buffer->full_size = strlen(ps.buffer->full);
-	ps.buffer->pars_size = ps.buffer->full_size + 1;
 
-	/* Fast path: one combined SIMD scan — no special chars, no copies,
-	 * no strtok.  Falls through if any special char is encountered. */
-	if (kbsh_parse_fast(ps.buffer, arena))
-		return KBSH_PARSE_OK;
-
-	if (env.home) {
-		size_t home_len;
-		size_t tilde_count;
-		size_t i;
-
-		home_len = strlen(env.home);
-		tilde_count = 0;
-		for (i = 0; ps.buffer->full[i] != '\0'; i++) {
-			if (ps.buffer->full[i] == '~')
-				tilde_count++;
-		}
-		ps.buffer->pars_size += tilde_count * home_len;
-	}
-
-	/* Pre-scan: account for variable expansion size.
-	 * Tracks in_squote state since $ is literal inside '...'. */
+	/*
+	 * Conservative pars allocation — no pre-scanning needed.
+	 *
+	 * 2× full_size handles moderate variable expansion (values up to
+	 * the same length as the surrounding command text).  home_len covers
+	 * tilde expansion.  The 256-byte pad handles small constants, status
+	 * strings, and positional params.  For pathological inputs (a single
+	 * $VAR that expands to several times full_size) the arena will
+	 * reject the allocation and kbsh_exit fires — the same outcome as
+	 * the old exact-size approach when the arena ran out.
+	 */
 	{
-		size_t i;
-		int sq;
-		int ign;
-		char c;
-		char nc;
-		char name[64];
-		size_t nl;
-		const char *val;
-		char sbuf[12];
-
-		sq = 0;
-		ign = 0;
-		for (i = 0; (c = ps.buffer->full[i]) != '\0'; i++) {
-			if (ign) {
-				ign = 0;
-				continue;
-			}
-			if (c == '\\' && !sq) {
-				ign = 1;
-				continue;
-			}
-			if (c == '\'') {
-				sq = !sq;
-				continue;
-			}
-			if (c != '$' || sq)
-				continue;
-
-			i++;
-			nc = ps.buffer->full[i];
-
-			if (nc == '?') {
-				sprintf(sbuf, "%d", last_status);
-				ps.buffer->pars_size += strlen(sbuf);
-			} else if (nc == '#') {
-				sprintf(
-				    sbuf, "%d", kbsh_positional_param_count);
-				ps.buffer->pars_size += strlen(sbuf);
-			} else if (nc >= '0' && nc <= '9') {
-				if (nc == '0') {
-					if (program_name)
-						ps.buffer->pars_size +=
-						    strlen(program_name);
-				} else {
-					int idx = nc - '1';
-					if (idx < kbsh_positional_param_count)
-						ps.buffer->pars_size += strlen(
-						    kbsh_positional_params
-							[idx]);
-				}
-			} else if (nc == '@' || nc == '*') {
-				int pi;
-				for (pi = 0; pi < kbsh_positional_param_count;
-				     pi++) {
-					ps.buffer->pars_size +=
-					    strlen(kbsh_positional_params[pi]);
-				}
-				if (kbsh_positional_param_count > 1)
-					ps.buffer->pars_size +=
-					    (size_t)(kbsh_positional_param_count -
-						     1);
-			} else if (nc == '{') {
-				i++;
-				nl = 0;
-				while ((c = ps.buffer->full[i]) != '}' &&
-				       c != '\0' && nl < sizeof(name) - 1)
-					name[nl++] = ps.buffer->full[i++];
-				name[nl] = '\0';
-				val = getenv(name);
-				if (val)
-					ps.buffer->pars_size += strlen(val);
-			} else if (isalpha((unsigned char)nc) || nc == '_') {
-				nl = 0;
-				while (
-				    (c = ps.buffer->full[i]) != '\0' &&
-				    (isalnum((unsigned char)c) || c == '_') &&
-				    nl < sizeof(name) - 1)
-					name[nl++] = ps.buffer->full[i++];
-				i--;
-				name[nl] = '\0';
-				val = getenv(name);
-				if (val)
-					ps.buffer->pars_size += strlen(val);
-			}
-		}
-	}
-
-	{
+		size_t home_len = env.home ? strlen(env.home) : 0;
+		size_t out_cap = ps.buffer->full_size * 2 + home_len + 256;
 		unsigned char *out = NULL;
 
-		if (kbsh_arena_alloc(arena,
-				     ps.buffer->pars_size,
-				     KBSH_ARENA_DEFAULT_ALIGN,
-				     &out) != KBSH_ARENA_SUCCESS)
+		if (kbsh_arena_alloc(
+			arena, out_cap, KBSH_ARENA_DEFAULT_ALIGN, &out) !=
+		    KBSH_ARENA_SUCCESS)
 			kbsh_exit(ENOMEM);
 		ps.buffer->pars = (char *)out;
+		ps.buffer->pars_size = out_cap;
 	}
 
 	while (1) {
@@ -606,35 +425,42 @@ static const char *kbsh_get_syntax_err_msg(const struct kbsh_parse_state *ps)
 	return NULL;
 }
 
+/* Direct word-build: one forward pass over pars[0..bpind-1].
+ * Replaces strtok (which acquires a global lock and re-scans) with a
+ * simple pointer walk.  Words are delimited by 0x1d bytes written by
+ * parse_space; we null-terminate each in place and record the start
+ * pointer in a stack array before committing to the arena. */
 static void kbsh_parse_tok(struct kbsh_parse_state *ps)
 {
-	size_t ind;
-	char *temp;
-	size_t word_alloc;
+	char *tmp_words[512];
+	size_t nwords = 0;
+	char *p = ps->buffer->pars;
+	char *end = p + ps->bpind;
+	unsigned char *out;
 
-	ind = 0;
-	temp = NULL;
-
-	ps->buffer->word_size = ++ps->argno;
-	word_alloc = sizeof(*ps->buffer->word) * (ps->buffer->word_size + 1);
-
-	{
-		unsigned char *out = NULL;
-
-		if (kbsh_arena_alloc(ps->arena,
-				     word_alloc,
-				     KBSH_ARENA_DEFAULT_ALIGN,
-				     &out) != KBSH_ARENA_SUCCESS)
-			kbsh_exit(ENOMEM);
-		ps->buffer->word = (char **)out;
+	while (p < end) {
+		/* null-terminate and skip separator bytes */
+		while (p < end && (unsigned char)*p == 0x1d)
+			*p++ = '\0';
+		if (p >= end)
+			break;
+		/* record word start, then advance past word body */
+		if (nwords < 512)
+			tmp_words[nwords++] = p;
+		while (p < end && (unsigned char)*p != 0x1d)
+			p++;
 	}
 
-	temp = strtok(ps->buffer->pars, "\x1d");
-	while (temp != NULL) {
-		ps->buffer->word[ind] = temp;
-		temp = strtok(NULL, "\x1d");
-		ind++;
-	}
-	ps->buffer->word[ind] = NULL;
-	ps->buffer->word_used = ind;
+	if (kbsh_arena_alloc(ps->arena,
+			     sizeof(char *) * (nwords + 1),
+			     sizeof(void *),
+			     &out) != KBSH_ARENA_SUCCESS)
+		kbsh_exit(ENOMEM);
+
+	ps->buffer->word = (char **)out;
+	if (nwords)
+		memcpy(ps->buffer->word, tmp_words, sizeof(char *) * nwords);
+	ps->buffer->word[nwords] = NULL;
+	ps->buffer->word_used = nwords;
+	ps->buffer->word_size = nwords + 1;
 }

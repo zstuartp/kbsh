@@ -1,0 +1,10 @@
+2026-03-04  Zackary Parsons  <parsons.zackary@gmail.com>
+
+	* Version 0.2.0
+	* Parameter expansion: $var, ${var}, $?, $0-$9, $#, $@, $*
+	* Arena allocator replacing malloc/free in core
+	* Session loop rewritten as explicit FSM
+	* POSIX compliance test harness (test/posix/)
+	* Smoke tests moved to test/smoke/
+	* GNU make build system with modern and portable profiles
+	* License locked to GPLv3

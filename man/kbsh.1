@@ -1,27 +1,9 @@
-.\"
-.\" Kbsh man page.
-.\" Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
-.\"
-.\" This file is part of kbsh.
-.\"
-.\" Kbsh is free software: you can redistribute it and/or modify
-.\" it under the terms of the GNU General Public License as published by
-.\" the Free Software Foundation, either version 3 of the License, or
-.\" (at your option) any later version.
-.\"
-.\" Kbsh is distributed in the hope that it will be useful,
-.\" but WITHOUT ANY WARRANTY; without even the implied warranty of
-.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-.\" GNU General Public License for more details.
-.\"
-.\" You should have received a copy of the GNU General Public License
-.\" along with kbsh.  If not, see <http://www.gnu.org/licenses/>.
-.\"
-.TH "KBSH" "1" "MARCH 2012" "K3BACON SHELL v0.1"
+.\" Copyright 2011, 2012, 2026 Zackary Parsons. Licensed under GPLv3.
+.TH "KBSH" "1" "MARCH 2026" "kbsh 0.2.0"
 
 .SH NAME
 
-\fBkbsh\fR - K3BACON Shell
+\fBkbsh\fR \- Kept-Bounded Shell
 
 .SH SYNOPSIS
 
@@ -29,13 +11,9 @@
 
 .SH DESCRIPTION
 
-\fBKbsh\fR is an sh-compatible* command language interpreter that executes
-commands read from the standard input or from a plain text file.
-
-\fBKbsh\fR is designed to replace those big, slow shells (ie Bash). It aims to
-provide the same functionality* as Bash, but in a much smaller size.
-
-*\fBKbsh\fR is still in early development and is lacking some key features.
+\fBkbsh\fR is a small, from-scratch POSIX shell. The session loop is driven
+by a static state-transition map. The memory model uses a statically
+allocated arena.
 
 .SH OPTIONS
 
@@ -54,19 +32,13 @@ provide the same functionality* as Bash, but in a much smaller size.
 
 .SH COPYRIGHT
 
-Copyright (C) 2012 Zack Parsons
-.br
-
-\fBKbsh\fP is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-.br
-
-\fBKbsh\fP is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+Copyright (C) 2011, 2026 Zackary Parsons.
+License: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>.
+This is free software; you are free to change and redistribute it.
+This program has NO WARRANTY, to the extent permitted by law.
 
 .SH "BUG REPORTS"
-Report bugs to: <k3bacon@gmail.com>
+
+Report bugs to: <parsons.zackary@gmail.com>
+.br
+Home page: <https://github.com/zstuartp/kbsh/>

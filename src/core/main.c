@@ -1,21 +1,4 @@
-/*
- * The K3BACON Shell (kbsh).
- * Copyright (C) 2011, 2012 Zack Parsons <parsons.zackary@gmail.com>
- *
- * This file is part of kbsh.
- *
- * Kbsh is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * Kbsh is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with kbsh.  If not, see <http://www.gnu.org/licenses/>.
- */
+/* Copyright 2011, 2012, 2026 Zackary Parsons. Licensed under GPLv3. */
 
 #include <config.h>
 
@@ -229,7 +212,7 @@ int main(int argc, char **argv)
 static void print_help(void)
 {
 	printf(
-"K3BACON Shell (%s) %s\n", PACKAGE, VERSION);
+"%s %s\n", PACKAGE_NAME, VERSION);
 	printf(_(
 "Usage: %s [Long options] [Shell options] [File]\n"), program_name);
 	puts("");
@@ -262,11 +245,11 @@ static void print_help(void)
 static void print_version(void)
 {
 	printf(
-"K3BACON Shell (%s) %s\n", PACKAGE, VERSION);
+"%s %s\n", PACKAGE_NAME, VERSION);
 	puts("");
 	puts(
-"Copyright (C) 2012 Zack Parsons\n"
-"License: GNU GPL version 3 <http://gnu.org/licenses/gpl.html>\n"
+"Copyright (C) 2011, 2026 Zackary Parsons\n"
+"License: GNU GPL version 3 <https://gnu.org/licenses/gpl.html>\n"
 "This is free software; you are free to change and redistribute it.\n"
 "This program has NO WARRANTY, to the extent permitted by law");
 }

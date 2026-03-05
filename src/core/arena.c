@@ -1,3 +1,5 @@
+/* Copyright 2026 Zackary Parsons. Licensed under GPLv3. */
+
 #include "arena.h"
 
 static int kbsh_arena_align_offset(size_t offset, size_t alignment, size_t *out)

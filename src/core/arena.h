@@ -1,3 +1,5 @@
+/* Copyright 2026 Zackary Parsons. Licensed under GPLv3. */
+
 #ifndef KBSH_ARENA_H
 #define KBSH_ARENA_H
 

@@ -1,7 +1,7 @@
 # ---------- Project settings ----------
 APP		?= kbsh
 PACKAGE		?= kbsh
-PACKAGE_NAME	?= KB Shell
+PACKAGE_NAME	?= kbsh
 PACKAGE_BUGREPORT ?= parsons.zackary@gmail.com
 PACKAGE_URL	?= https://github.com/zstuartp/kbsh/
 PACKAGE_PACKAGER ?=

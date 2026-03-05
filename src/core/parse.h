@@ -29,10 +29,12 @@ enum kbsh_parse_result {
 	KBSH_PARSE_NEED_MORE,
 	KBSH_PARSE_ERROR_MISSING_SQUOTE,
 	KBSH_PARSE_ERROR_MISSING_DQUOTE,
+	KBSH_PARSE_ERROR_MISSING_RBRACE,
 	KBSH_PARSE_ERROR_UNEXPECTED_EOF
 };
 
 enum kbsh_parse_result kbsh_parse(struct Buffer *b,
-				  struct kbsh_arena *arena);
+				  struct kbsh_arena *arena,
+				  int last_status);
 
 #endif/*PARSE_H*/

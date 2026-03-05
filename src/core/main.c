@@ -184,7 +184,21 @@ int main(int argc, char **argv)
 
 	kbsh_init();/* initializer for kbsh */
 
-	if (optind < argc) {
+	if (kbsh_options.c) {
+		/* Command string mode: -c [string] [arg ...] */
+		int run_status;
+		FILE *tmp = tmpfile();
+		if (!tmp)
+			kbsh_exit(errno);
+		fputs(kbsh_options.c_arg, tmp);
+		fputc('\n', tmp);
+		rewind(tmp);
+		kbsh_positional_params = argv + optind;
+		kbsh_positional_param_count = argc - optind;
+		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp, stdout);
+		fclose(tmp);
+		kbsh_exit(run_status);
+	} else if (optind < argc) {
 		/* File mode: read commands from a script file */
 		int run_status;
 		FILE *fp = fopen(argv[optind], "r");
@@ -194,6 +208,8 @@ int main(int argc, char **argv)
 			kbsh_exit(1);
 		}
 		program_name = argv[optind];
+		kbsh_positional_params = argv + optind + 1;
+		kbsh_positional_param_count = argc - optind - 1;
 		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, fp, stdout);
 		fclose(fp);
 		kbsh_exit(run_status);
@@ -201,18 +217,6 @@ int main(int argc, char **argv)
 		   (!kbsh_options.i && !kbsh_options.c)) {
 		/* Pipe mode: stdin is not a tty */
 		kbsh_exit(kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, stdin, stdout));
-	} else if (kbsh_options.c) {
-		/* Command string mode: -c [string] */
-		int run_status;
-		FILE *tmp = tmpfile();
-		if (!tmp)
-			kbsh_exit(errno);
-		fputs(kbsh_options.c_arg, tmp);
-		fputc('\n', tmp);
-		rewind(tmp);
-		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp, stdout);
-		fclose(tmp);
-		kbsh_exit(run_status);
 	} else {
 		/* Interactive mode */
 		kbsh_input_init();

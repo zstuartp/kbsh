@@ -48,7 +48,9 @@ endif
 
 # ---------- Source discovery ----------
 SRCS := $(shell find $(SRC_DIR) -type f -name '*.c' \
--not -path '*/$(BUILD_DIR)/*' -not -path '*/.git/*' -print | sed 's|^\./||')
+-not -path '*/$(BUILD_DIR)/*' -not -path '*/.git/*' \
+-not -name 'arena_viz.c' \
+-print | sed 's|^\./||')
 
 OBJS := $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.o))
 DEPS := $(OBJS:.o=.d)
@@ -83,26 +85,6 @@ SANITIZE ?=
 ifneq ($(strip $(SANITIZE)),)
 CFLAGS += -O1 -g -fno-omit-frame-pointer -fsanitize=$(SANITIZE)
 LDFLAGS += -fsanitize=$(SANITIZE)
-endif
-
-READLINE_CFLAGS := $(shell $(PKG_CONFIG) --cflags readline 2>/dev/null)
-READLINE_LIBS	:= $(shell $(PKG_CONFIG) --libs readline 2>/dev/null)
-READLINE_PREFIX ?= $(shell brew --prefix readline 2>/dev/null)
-
-ifeq ($(strip $(READLINE_CFLAGS)),)
-ifneq ($(strip $(READLINE_PREFIX)),)
-CPPFLAGS += -I$(READLINE_PREFIX)/include
-LDFLAGS	 += -L$(READLINE_PREFIX)/lib
-LDLIBS	 += -lreadline -lncurses
-else
-LDLIBS	 += -lreadline
-ifeq ($(UNAME_S),Darwin)
-LDLIBS += -lncurses
-endif
-endif
-else
-CPPFLAGS += $(READLINE_CFLAGS)
-LDLIBS	 += $(READLINE_LIBS)
 endif
 
 ifeq ($(ENABLE_NLS),1)
@@ -328,5 +310,3 @@ print-vars:
 	@echo "POSIX_C_SOURCE=$(POSIX_C_SOURCE)"
 	@echo "SANITIZE=$(SANITIZE)"
 	@echo "TEST_POSIX_RUNNER=$(TEST_POSIX_RUNNER)"
-	@echo "READLINE_CFLAGS=$(READLINE_CFLAGS)"
-	@echo "READLINE_LIBS=$(READLINE_LIBS)"

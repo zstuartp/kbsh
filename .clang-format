@@ -1,0 +1,13 @@
+BasedOnStyle: LLVM
+UseTab: Always
+TabWidth: 8
+IndentWidth: 8
+ColumnLimit: 80
+BreakBeforeBraces: Linux
+BinPackArguments: false
+BinPackParameters: false
+Cpp11BracedListStyle: false
+BreakArrays: true
+PenaltyReturnTypeOnItsOwnLine: 10000
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve

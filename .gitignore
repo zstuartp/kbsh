@@ -34,6 +34,9 @@ series
 # Backups and hidden files
 *~
 .*
+!.clang-format
+!.editorconfig
+!.gitignore
 \#*#
 
 #

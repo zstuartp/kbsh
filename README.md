@@ -1,6 +1,6 @@
 # kbsh
 
-*Kept Bounded Shell*
+*Kept-Bounded Shell*
 
 A small, from-scratch POSIX shell.
 

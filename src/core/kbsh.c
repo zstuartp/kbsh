@@ -398,7 +398,6 @@ void kbsh_main(struct Buffer *b, struct kbsh_arena *arena)
 		if (i == b->word_used) {
 			for (i = 0; i < b->word_used; i++)
 				do_assignment(b->word[i]);
-			kbsh_env_update();
 			return;
 		}
 	}

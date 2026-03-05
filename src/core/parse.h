@@ -21,17 +21,18 @@
 #ifndef PARSE_H
 #define PARSE_H
 
+#include "core/arena.h"
 #include "core/buffer.h"
 
-enum Syntax_Error_Type {
-	NO_SERROR,
-	MISSING_SINGLE_QUOTE,
-	MISSING_DOUBLE_QUOTE,
-	UNEXPECTED_EOF
+enum kbsh_parse_result {
+	KBSH_PARSE_OK,
+	KBSH_PARSE_NEED_MORE,
+	KBSH_PARSE_ERROR_MISSING_SQUOTE,
+	KBSH_PARSE_ERROR_MISSING_DQUOTE,
+	KBSH_PARSE_ERROR_UNEXPECTED_EOF
 };
 
-enum Syntax_Error_Type parse_err;
-
-void kbsh_parse(struct Buffer *b);
+enum kbsh_parse_result kbsh_parse(struct Buffer *b,
+				  struct kbsh_arena *arena);
 
 #endif/*PARSE_H*/

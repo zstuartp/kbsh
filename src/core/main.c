@@ -20,22 +20,25 @@
 
 #include <config.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <unistd.h>
+#if !defined(KBSH_PORTABLE_PROFILE)
 #include <getopt.h>
+#endif
 
 #include "localize.h"
 
 #include "core/kbsh.h"
-#include "core/cmdstr.h"
-#include "core/file.h"
 #include "core/input.h"
 
 static int print_help_flag;
 
 #define SOPTS "c:isabefhkmnptuvxBCHP"
+#if !defined(KBSH_PORTABLE_PROFILE)
 static const struct option longopts[] = {
 	{ "help", no_argument, &print_help_flag, 1 },
 	{ "version", no_argument, &print_help_flag, 2 },
@@ -44,15 +47,17 @@ static const struct option longopts[] = {
 	{ NULL, no_argument, NULL, 's' },
 	{ NULL, 0, NULL, 0 }
 };
+#endif
 
 static void print_help(void);
 static void print_version(void);
 
 int main(int argc, char **argv)
 {
-	program_name = argv[0];
 	int optc;
-	int lose = 0;
+	int lose;
+	program_name = argv[0];
+	lose = 0;
 
 	setlocale(LC_ALL, "");
 
@@ -65,6 +70,58 @@ int main(int argc, char **argv)
 	stdout_isatty = isatty(STDIN_FILENO);
 	stderr_isatty = isatty(STDERR_FILENO);
 
+#if defined(KBSH_PORTABLE_PROFILE)
+	{
+		int idx;
+		for (idx = 1; idx < argc; idx++) {
+			if (!strcmp(argv[idx], "--help")) {
+				print_help_flag = 1;
+				break;
+			}
+			if (!strcmp(argv[idx], "--version")) {
+				print_help_flag = 2;
+				break;
+			}
+		}
+	}
+	if (!print_help_flag) {
+		while ((optc = getopt(argc, argv, SOPTS)) != -1) {
+			switch (optc) {
+			case 'c': /* command string */
+				kbsh_options.c = 1;
+				kbsh_options.c_arg = optarg;
+				break;
+			case 'i': /* interactive shell */
+				kbsh_options.i = 1;
+				break;
+			case 's': /* default: read from standard input */
+				kbsh_options.s = 1;
+				break;
+			case 'a':
+			case 'b':
+			case 'e':
+			case 'f':
+			case 'h':
+			case 'k':
+			case 'm':
+			case 'n':
+			case 'p':
+			case 't':
+			case 'u':
+			case 'v':
+			case 'x':
+			case 'B':
+			case 'C':
+			case 'H':
+			case 'P':
+				break;
+			default:
+				lose = 1;
+				break;
+			}
+		}
+	}
+#else
 	while ((optc = getopt_long(argc, argv, SOPTS, longopts, NULL)) != -1) {
 		switch (optc) {
 		case 'c': /* command string */
@@ -100,6 +157,7 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+#endif
 
 	switch (print_help_flag) {
 	case 1:
@@ -123,24 +181,36 @@ int main(int argc, char **argv)
 	kbsh_init();/* initializer for kbsh */
 
 	if (optind < argc) {
-		/* File mode */
-		/* Read from a file */
-		kbsh_fpars_init(argv[optind]);
-		kbsh_fpars_main();
+		/* File mode: read commands from a script file */
+		int run_status;
+		FILE *fp = fopen(argv[optind], "r");
+		if (!fp) {
+			fprintf(stderr, "%s: %s: %s\n", program_name,
+				argv[optind], strerror(errno));
+			kbsh_exit(1);
+		}
+		program_name = argv[optind];
+		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, fp, stdout);
+		fclose(fp);
+		kbsh_exit(run_status);
 	} else if ((!stdin_isatty || !stderr_isatty) &&
 		   (!kbsh_options.i && !kbsh_options.c)) {
-		/* Pipe mode */
-		/* stdin piped, NULL tells kbsh_fpars to read from stdin */
-		kbsh_fpars_init(NULL);
-		kbsh_fpars_main();
+		/* Pipe mode: stdin is not a tty */
+		kbsh_exit(kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, stdin, stdout));
 	} else if (kbsh_options.c) {
-		/* Command string mode */
-		/* Read command from "-c [string]" */
-		kbsh_cmdstr_init(kbsh_options.c_arg);
-		kbsh_cmdstr_main();
+		/* Command string mode: -c [string] */
+		int run_status;
+		FILE *tmp = tmpfile();
+		if (!tmp)
+			kbsh_exit(errno);
+		fputs(kbsh_options.c_arg, tmp);
+		fputc('\n', tmp);
+		rewind(tmp);
+		run_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp, stdout);
+		fclose(tmp);
+		kbsh_exit(run_status);
 	} else {
 		/* Interactive mode */
-		/* Read input from user */
 		kbsh_input_init();
 		kbsh_input_main();
 	}

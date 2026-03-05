@@ -25,6 +25,7 @@ DESTDIR         ?=
 LOCALEDIR       ?= $(PREFIX)/share/locale
 ENABLE_NLS      ?= 0
 TEST_POSIX_RUNNER ?= test/posix/run.sh
+PROFILE         ?= modern
 
 UNAME_S         ?= $(shell uname -s)
 CC              ?= cc
@@ -51,8 +52,23 @@ OBJS := $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.o))
 DEPS := $(OBJS:.o=.d)
 
 # ---------- Build flags ----------
-CPPFLAGS += -I$(BUILD_DIR) -I$(SRC_DIR) -D_POSIX_C_SOURCE=200809L
-CFLAGS   += -std=c99 -Wall -Wextra -Werror -pedantic
+ifeq ($(PROFILE),portable)
+  KBSH_STD_DEFAULT := c89
+  KBSH_POSIX_DEFAULT := 200112L
+  CPPFLAGS += -DKBSH_PORTABLE_PROFILE=1
+else ifeq ($(PROFILE),modern)
+  KBSH_STD_DEFAULT := c99
+  KBSH_POSIX_DEFAULT := 200809L
+  CPPFLAGS += -DKBSH_MODERN_PROFILE=1
+else
+  $(error Unsupported PROFILE='$(PROFILE)'; expected modern or portable)
+endif
+
+CSTD ?= $(KBSH_STD_DEFAULT)
+POSIX_C_SOURCE ?= $(KBSH_POSIX_DEFAULT)
+
+CPPFLAGS += -I$(BUILD_DIR) -I$(SRC_DIR) -D_POSIX_C_SOURCE=$(POSIX_C_SOURCE)
+CFLAGS   += -std=$(CSTD) -Wall -Wextra -Werror -pedantic
 
 DEBUG ?= 0
 ifeq ($(DEBUG),1)
@@ -93,7 +109,7 @@ endif
 
 # ---------- Targets ----------
 .PHONY: all clean install install-user uninstall uninstall-user run
-.PHONY: test test-posix test-asan test-ubsan
+.PHONY: test test-posix test-asan test-ubsan test-portable
 .PHONY: print-vars version
 
 all: $(TARGET)
@@ -234,8 +250,16 @@ test: $(TARGET)
 		echo "test failed: line-continue.sh output mismatch: $$line"; \
 		exit 1; \
 	fi; \
-	if ./$(TARGET) scripts/kbsh-test/unexpected-eof.sh >/dev/null 2>&1; then \
+	set +e; \
+	./$(TARGET) scripts/kbsh-test/unexpected-eof.sh >/dev/null 2>&1; \
+	unexpected_status=$$?; \
+	set -e; \
+	if [ "$$unexpected_status" -eq 0 ]; then \
 		echo "test failed: unexpected-eof.sh should fail"; \
+		exit 1; \
+	fi; \
+	if [ "$$unexpected_status" -ge 128 ]; then \
+		echo "test failed: unexpected-eof.sh crashed (status=$$unexpected_status)"; \
 		exit 1; \
 	fi; \
 	echo "kbsh tests passed"
@@ -257,6 +281,12 @@ test-ubsan:
 	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=undefined all
 	$(Q)$(MAKE) --no-print-directory DEBUG=1 SANITIZE=undefined test
 
+test-portable:
+	$(call log,TEST,portable)
+	$(Q)$(MAKE) --no-print-directory clean FORCE=1
+	$(Q)$(MAKE) --no-print-directory PROFILE=portable all
+	$(Q)$(MAKE) --no-print-directory PROFILE=portable test
+
 version:
 	@echo "$(VERSION)"
 
@@ -268,6 +298,9 @@ print-vars:
 	@echo "BINDIR=$(BINDIR)"
 	@echo "LOCALEDIR=$(LOCALEDIR)"
 	@echo "ENABLE_NLS=$(ENABLE_NLS)"
+	@echo "PROFILE=$(PROFILE)"
+	@echo "CSTD=$(CSTD)"
+	@echo "POSIX_C_SOURCE=$(POSIX_C_SOURCE)"
 	@echo "SANITIZE=$(SANITIZE)"
 	@echo "TEST_POSIX_RUNNER=$(TEST_POSIX_RUNNER)"
 	@echo "READLINE_CFLAGS=$(READLINE_CFLAGS)"

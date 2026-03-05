@@ -58,9 +58,12 @@ config.h
 Makefile
 stamp-h1
 *.status
-aclocal.m4
+/build/
 
 #
 # Don't ignore
 #
 !.gitignore
+!/Makefile
+!/config.h.in
+!/.editorconfig

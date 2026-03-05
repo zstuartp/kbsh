@@ -8,7 +8,19 @@ between the user and the operating system via command line.
 	are permitted in any medium without royalty provided the copyright
 	notice and this notice are preserved.
 
-See the file ./INSTALL for building and installation instructions.
+Build and install now use the top-level Makefile (no autotools required):
+
+	make
+	make test
+	make install PREFIX=$HOME/.local
+
+Version support:
+
+- Default version comes from `./VERSION`.
+- Override per build with `make VERSION=0.1.1`.
+- Check effective version with `make version`.
+
+Autotools files have been removed from this repository.
 
 Source Code: https://github.com/k3bacon/kbsh/
 

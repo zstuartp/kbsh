@@ -1,0 +1,18 @@
+#ifndef KBSH_CONFIG_H
+#define KBSH_CONFIG_H
+
+/* Project identity */
+#define PACKAGE "@PACKAGE@"
+#define PACKAGE_NAME "@PACKAGE_NAME@"
+#define PACKAGE_BUGREPORT "@PACKAGE_BUGREPORT@"
+#define PACKAGE_URL "@PACKAGE_URL@"
+
+/* Versioning */
+#define VERSION "@VERSION@"
+#define PACKAGE_VERSION "@VERSION@"
+
+/* Localization */
+#define LOCALEDIR "@LOCALEDIR@"
+#define ENABLE_NLS @ENABLE_NLS@
+
+#endif /* KBSH_CONFIG_H */

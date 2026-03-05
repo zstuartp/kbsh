@@ -1,13 +1,12 @@
 /*
  * Kbsh core.
- * Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,66 +19,470 @@
 
 #include <config.h>
 
+#include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
+#include <string.h>
 
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include "localize.h"
 
-#include "core/kbsh.h"
-#include "core/buffer.h"
-#include "core/sig.h"
-#include "core/var.h"
 #include "builtin/builtin.h"
+#include "core/arena.h"
+#include "core/buffer.h"
+#include "core/env.h"
+#include "core/input.h"
+#include "core/kbsh.h"
+#include "core/parse.h"
+#include "core/prompt.h"
+#include "core/sig.h"
 
-static int kbsh_exec(int argc, char **argv)
-{
-	volatile int err = -1;
-	pid_t pid = 0;
+char *program_name = PACKAGE;
+void (*kbsh_clean)(void);
+char **kbsh_positional_params = NULL;
+int kbsh_positional_param_count = 0;
 
-	if (!argc)
-		return -EINVAL;
+enum kbsh_state_id {
+	KBSH_STATE_INIT,
+	KBSH_STATE_READ,
+	KBSH_STATE_READ_MORE,
+	KBSH_STATE_PARSE,
+	KBSH_STATE_EXEC,
+	KBSH_STATE_CLEANUP,
+	KBSH_STATE_EXIT,
+	KBSH_STATE_COUNT
+};
 
-	pid = fork();
+enum kbsh_event_id {
+	KBSH_EVENT_OKAY,
+	KBSH_EVENT_SKIP,
+	KBSH_EVENT_NEED_MORE,
+	KBSH_EVENT_END_OF_FILE,
+	KBSH_EVENT_PARSE_ERROR,
+	KBSH_EVENT_EXEC_ERROR,
+	KBSH_EVENT_FATAL,
+	KBSH_EVENT_COUNT
+};
 
-	if (!pid) {
-		err = execvp(argv[0], argv);
-		if (err) {
-			fprintf(stderr, "%s: ", program_name);
-			perror(argv[0]);
-		}
-		_exit(err);
-	} else if (pid > 0)
-		wait(NULL);
-	if (pid < 0)
-		kbsh_exit(errno);
+struct kbsh_state {
+	enum kbsh_state_id state_id;
+	enum kbsh_event_id event_id;
+	enum kbsh_run_mode_id run_mode_id;
+	int last_command_status;
+	size_t arena_mark;
+	struct Buffer buffer;
+};
 
-	return (int)err;
-}
+static enum kbsh_event_id get_input(struct kbsh_state *,
+				    FILE *,
+				    FILE *,
+				    struct kbsh_arena *);
+static enum kbsh_event_id parse_input(struct kbsh_state *, struct kbsh_arena *);
+static enum kbsh_event_id exec_cmd(struct kbsh_state *, struct kbsh_arena *);
+static enum kbsh_event_id do_cleanup(struct kbsh_state *, struct kbsh_arena *);
+static enum kbsh_state_id kbsh_transition(const struct kbsh_state *);
 
-void kbsh_init(char **env)
+static int kbsh_exec(char **argums);
+static void kbsh_fork(struct Buffer *b);
+static char *kbsh_run_read_line(FILE *fp);
+
+void kbsh_init(void)
 {
 	kbsh_sig_init();
-	kbsh_var_init(env);
+	kbsh_env_init();
 }
 
 void kbsh_exit(int exit_status)
 {
 	if (kbsh_clean)
 		kbsh_clean();
-	kbsh_var_exit();
+	kbsh_env_exit();
 	exit(exit_status);
 }
 
-int kbsh_main(int argc, char **argv)
+int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out)
 {
-	int ret = 0;
+	static unsigned char pool[KBSH_POOL_SIZE];
+	struct kbsh_arena arena;
+	struct kbsh_state state;
 
-	if ((ret = kbsh_run_builtin(argc, argv)) == BUILTIN_NOT_FOUND)
-		ret = kbsh_exec(argc, argv);
+	memset(&state, 0, sizeof(state));
+	state.state_id = KBSH_STATE_READ;
+	state.run_mode_id = mode;
 
-	return ret;
+	if (kbsh_arena_init(&arena, pool, sizeof(pool)) != KBSH_ARENA_SUCCESS) {
+		kbsh_exit(1);
+	}
+
+	while (state.state_id != KBSH_STATE_EXIT) {
+		switch (state.state_id) {
+		case KBSH_STATE_READ:
+			state.arena_mark = kbsh_arena_mark(&arena);
+			state.event_id = get_input(&state, in, out, &arena);
+			break;
+		case KBSH_STATE_READ_MORE:
+			state.event_id = get_input(&state, in, out, &arena);
+			break;
+		case KBSH_STATE_PARSE:
+			state.event_id = parse_input(&state, &arena);
+			break;
+		case KBSH_STATE_EXEC:
+			state.event_id = exec_cmd(&state, &arena);
+			break;
+		case KBSH_STATE_CLEANUP:
+			state.event_id = do_cleanup(&state, &arena);
+			break;
+		default:
+			return 1;
+		}
+		state.state_id = kbsh_transition(&state);
+	}
+
+	return state.last_command_status;
+}
+
+static enum kbsh_event_id get_input(struct kbsh_state *state,
+				    FILE *in,
+				    FILE *out,
+				    struct kbsh_arena *arena)
+{
+	char *line = NULL;
+	unsigned char *arena_buf = NULL;
+	size_t len;
+	size_t old_len;
+	const char *rl_prompt;
+
+	(void)out;
+
+	if (state->run_mode_id == KBSH_RUN_MODE_INTERACTIVE) {
+		rl_prompt = (state->state_id == KBSH_STATE_READ_MORE)
+			? prompt.scnd_ch : prompt.crnt_ch;
+		line = kbsh_input_readline(rl_prompt);
+		if (!line) {
+			printf("exit\n");
+		}
+	} else {
+		line = kbsh_run_read_line(in);
+	}
+
+	if (state->state_id == KBSH_STATE_READ_MORE) {
+		if (!line) {
+			/* EOF while expecting continuation */
+			fprintf(stderr, "%s: ", program_name);
+			fprintf(stderr, _("syntax error: "));
+			fprintf(stderr, "%s\n", _("unexpected EOF"));
+			state->last_command_status =
+			    (int)KBSH_PARSE_ERROR_UNEXPECTED_EOF;
+			return KBSH_EVENT_PARSE_ERROR;
+		}
+		old_len = strlen(state->buffer.full);
+		len = strlen(line);
+		if (kbsh_arena_alloc(arena, old_len + len + 1, 1, &arena_buf)
+		    != KBSH_ARENA_SUCCESS) {
+			free(line);
+			kbsh_exit(1);
+		}
+		memcpy(arena_buf, state->buffer.full, old_len);
+		memcpy(arena_buf + old_len, line, len + 1);
+		free(line);
+		state->buffer.full = (char *)arena_buf;
+		state->buffer.full_size = old_len + len + 1;
+		return KBSH_EVENT_OKAY;
+	}
+
+	if (!line)
+		return KBSH_EVENT_END_OF_FILE;
+
+	if (line[0] == '#' || line[0] == '\n' || line[0] == '\0') {
+		free(line);
+		return KBSH_EVENT_SKIP;
+	}
+
+	len = strlen(line);
+	if (kbsh_arena_alloc(arena, len + 1, 1, &arena_buf)
+	    != KBSH_ARENA_SUCCESS) {
+		free(line);
+		kbsh_exit(1);
+	}
+	memcpy(arena_buf, line, len + 1);
+	free(line);
+	state->buffer.full = (char *)arena_buf;
+	state->buffer.full_size = len + 1;
+	return KBSH_EVENT_OKAY;
+}
+
+static enum kbsh_event_id parse_input(struct kbsh_state *state,
+				      struct kbsh_arena *arena)
+{
+	enum kbsh_parse_result result;
+
+	result = kbsh_parse(&state->buffer, arena, state->last_command_status);
+	switch (result) {
+	case KBSH_PARSE_OK:
+		return KBSH_EVENT_OKAY;
+	case KBSH_PARSE_NEED_MORE:
+		return KBSH_EVENT_NEED_MORE;
+	default:
+		state->last_command_status = (int)result;
+		return KBSH_EVENT_PARSE_ERROR;
+	}
+}
+
+static enum kbsh_event_id exec_cmd(struct kbsh_state *state,
+				   struct kbsh_arena *arena)
+{
+	(void)arena;
+	kbsh_main(&state->buffer);
+	state->last_command_status = 0;
+	if (state->run_mode_id == KBSH_RUN_MODE_INTERACTIVE)
+		kbsh_input_save_history();
+	return KBSH_EVENT_OKAY;
+}
+
+static enum kbsh_event_id do_cleanup(struct kbsh_state *state,
+				     struct kbsh_arena *arena)
+{
+	(void)kbsh_arena_rewind(arena, state->arena_mark);
+	memset(&state->buffer, 0, sizeof(state->buffer));
+	return KBSH_EVENT_OKAY;
+}
+
+/*
+ * Transition table: [run_mode][current_state][event] -> next_state
+ */
+/* clang-format off */
+static const enum kbsh_state_id
+kbsh_transitions[2][KBSH_STATE_COUNT][KBSH_EVENT_COUNT] = {
+	[KBSH_RUN_MODE_NONINTERACTIVE] = {
+		[KBSH_STATE_READ] = {
+			KBSH_STATE_PARSE,     /* OKAY      */
+			KBSH_STATE_READ,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_READ_MORE] = {
+			KBSH_STATE_PARSE,     /* OKAY      */
+			KBSH_STATE_READ_MORE, /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_PARSE] = {
+			KBSH_STATE_EXEC,      /* OKAY      */
+			KBSH_STATE_CLEANUP,   /* SKIP      */
+			KBSH_STATE_READ_MORE, /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_EXEC] = {
+			KBSH_STATE_CLEANUP,   /* OKAY      */
+			KBSH_STATE_EXIT,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_CLEANUP,   /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_CLEANUP] = {
+			KBSH_STATE_READ,      /* OKAY      */
+			KBSH_STATE_EXIT,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+	},
+	[KBSH_RUN_MODE_INTERACTIVE] = {
+		[KBSH_STATE_READ] = {
+			KBSH_STATE_PARSE,     /* OKAY      */
+			KBSH_STATE_READ,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_READ_MORE] = {
+			KBSH_STATE_PARSE,     /* OKAY      */
+			KBSH_STATE_READ_MORE, /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_PARSE] = {
+			KBSH_STATE_EXEC,      /* OKAY      */
+			KBSH_STATE_CLEANUP,   /* SKIP      */
+			KBSH_STATE_READ_MORE, /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_CLEANUP,   /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_EXEC] = {
+			KBSH_STATE_CLEANUP,   /* OKAY      */
+			KBSH_STATE_EXIT,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_CLEANUP,   /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+		[KBSH_STATE_CLEANUP] = {
+			KBSH_STATE_READ,      /* OKAY      */
+			KBSH_STATE_EXIT,      /* SKIP      */
+			KBSH_STATE_EXIT,      /* NEED_MORE */
+			KBSH_STATE_EXIT,      /* EOF       */
+			KBSH_STATE_EXIT,      /* PARSE_ERR */
+			KBSH_STATE_EXIT,      /* EXEC_ERR  */
+			KBSH_STATE_EXIT,      /* FATAL     */
+		},
+	},
+};
+/* clang-format on */
+
+static enum kbsh_state_id kbsh_transition(const struct kbsh_state *state)
+{
+	if (state->state_id >= KBSH_STATE_EXIT) {
+		return KBSH_STATE_EXIT;
+	}
+	return kbsh_transitions[state->run_mode_id][state->state_id]
+			       [state->event_id];
+}
+
+static int is_assignment(const char *word)
+{
+	const char *p;
+	if (!word || !*word)
+		return 0;
+	if (!isalpha((unsigned char)*word) && *word != '_')
+		return 0;
+	for (p = word + 1; *p && *p != '='; p++) {
+		if (!isalnum((unsigned char)*p) && *p != '_')
+			return 0;
+	}
+	return *p == '=';
+}
+
+static void do_assignment(const char *word)
+{
+	char name[256];
+	const char *eq;
+	size_t name_len;
+
+	eq = strchr(word, '=');
+	if (!eq)
+		return;
+	name_len = (size_t)(eq - word);
+	if (name_len >= sizeof(name))
+		return;
+	memcpy(name, word, name_len);
+	name[name_len] = '\0';
+	setenv(name, eq + 1, 1);
+}
+
+void kbsh_main(struct Buffer *b)
+{
+	size_t i;
+
+	if (b->word_used > 0) {
+		for (i = 0; i < b->word_used; i++) {
+			if (!is_assignment(b->word[i]))
+				break;
+		}
+		if (i == b->word_used) {
+			for (i = 0; i < b->word_used; i++)
+				do_assignment(b->word[i]);
+			kbsh_env_update();
+			return;
+		}
+	}
+
+	if (!kbsh_find_builtin(b))
+		kbsh_fork(b);
+	kbsh_env_update();
+}
+
+static int kbsh_exec(char **argums)
+{
+	int err = 0;
+
+	err = execvp(argums[0], argums);
+	if (err) {
+		fprintf(stderr, "%s: ", program_name);
+		perror(argums[0]);
+	}
+	return err;
+}
+
+static void kbsh_fork(struct Buffer *b)
+{
+	pid_t pid = fork();
+
+	if (!pid)
+		_exit(kbsh_exec(b->word));
+	else if (pid > 0)
+		wait(NULL);
+	if (pid < 0)
+		kbsh_exit(errno);
+}
+
+static char *kbsh_run_read_line(FILE *fp)
+{
+	char *line = NULL;
+	size_t cap = 0;
+#if defined(KBSH_PORTABLE_PROFILE)
+	size_t used = 0;
+	char *new_buf = NULL;
+	char *chunk = NULL;
+#else
+	ssize_t len = 0;
+#endif
+
+#if defined(KBSH_PORTABLE_PROFILE)
+	cap = 128;
+	line = malloc(cap);
+	if (!line)
+		kbsh_exit(errno);
+	line[0] = '\0';
+	while (1) {
+		chunk = fgets(line + used, (int)(cap - used), fp);
+		if (!chunk) {
+			if (used == 0) {
+				free(line);
+				return NULL;
+			}
+			break;
+		}
+		used += strlen(line + used);
+		if (used > 0 && line[used - 1] == '\n')
+			break;
+		if (feof(fp))
+			break;
+		new_buf = realloc(line, cap * 2);
+		if (!new_buf)
+			kbsh_exit(errno);
+		line = new_buf;
+		cap *= 2;
+	}
+#else
+	len = getline(&line, &cap, fp);
+	if (len < 0) {
+		free(line);
+		return NULL;
+	}
+#endif
+	return line;
 }

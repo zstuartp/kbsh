@@ -1,13 +1,12 @@
 /*
  * Kbsh core.
- * Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,29 +20,26 @@
 #ifndef KBSH_H
 #define KBSH_H
 
-char *program_name;
+#include <stdio.h>
 
-struct Kbsh_options {
-	int c;
-	char *c_arg;
-	int i;
-	int s;
-} kbsh_options;
+#include "core/buffer.h"
 
-enum Mode {
-	FILE_M,
-	INTR_M,
-	STRG_M
-} kbsh_mode;
+extern char *program_name;
+extern void (*kbsh_clean)(void);
+extern char **kbsh_positional_params;
+extern int kbsh_positional_param_count;
 
-int stdin_isatty;
-int stdout_isatty;
-int stderr_isatty;
+enum kbsh_run_mode_id {
+	KBSH_RUN_MODE_INTERACTIVE,
+	KBSH_RUN_MODE_NONINTERACTIVE
+};
 
-void (*kbsh_clean)(void);
+void kbsh_init(void);
 
 void kbsh_exit(int exit_status);
-void kbsh_init(char **env);
-int kbsh_main(int argc, char **argv);
+
+int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out);
+
+void kbsh_main(struct Buffer *buffer);
 
 #endif/*KBSH_H*/

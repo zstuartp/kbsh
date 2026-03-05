@@ -1,0 +1,246 @@
+# ---------- Project settings ----------
+APP             ?= kbsh
+PACKAGE         ?= kbsh
+PACKAGE_NAME    ?= K3BACON Shell
+PACKAGE_BUGREPORT ?= k3bacon@gmail.com
+PACKAGE_URL     ?= https://github.com/k3bacon/kbsh/
+VERSION_FILE    ?= VERSION
+VERSION         ?= $(strip $(shell cat $(VERSION_FILE) 2>/dev/null))
+
+ifeq ($(strip $(VERSION)),)
+VERSION := 0.1.0-dev
+endif
+
+SRC_DIR         ?= src
+BUILD_DIR       ?= build
+OBJ_DIR         := $(BUILD_DIR)/obj
+BIN_DIR         := $(BUILD_DIR)/bin
+TARGET          := $(BIN_DIR)/$(APP)
+CONFIG_HEADER_IN ?= config.h.in
+CONFIG_HEADER   := $(BUILD_DIR)/config.h
+CLEAN_STAMP     := $(BUILD_DIR)/.make-created
+PREFIX          ?= /usr/local
+BINDIR          ?= $(PREFIX)/bin
+DESTDIR         ?=
+LOCALEDIR       ?= $(PREFIX)/share/locale
+ENABLE_NLS      ?= 0
+
+UNAME_S         ?= $(shell uname -s)
+CC              ?= cc
+PKG_CONFIG      ?= pkg-config
+
+# ---------- Pretty output / verbosity ----------
+V ?= 0
+ifeq ($(V),1)
+  Q :=
+  define log
+  endef
+else
+  Q := @
+  define log
+	@printf "  %-6s %s\n" "$(1)" "$(2)"
+  endef
+endif
+
+# ---------- Source discovery ----------
+SRCS := $(shell find $(SRC_DIR) -type f -name '*.c' \
+	-not -path '*/$(BUILD_DIR)/*' -not -path '*/.git/*' -print | sed 's|^\./||')
+
+OBJS := $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.o))
+DEPS := $(OBJS:.o=.d)
+
+# ---------- Build flags ----------
+CPPFLAGS += -I$(BUILD_DIR) -I$(SRC_DIR) -D_POSIX_C_SOURCE=200809L
+CFLAGS   += -std=c99 -Wall -Wextra -Werror -pedantic
+
+DEBUG ?= 0
+ifeq ($(DEBUG),1)
+  CFLAGS += -O0 -g
+else
+  CFLAGS += -O2
+endif
+
+READLINE_CFLAGS := $(shell $(PKG_CONFIG) --cflags readline 2>/dev/null)
+READLINE_LIBS   := $(shell $(PKG_CONFIG) --libs readline 2>/dev/null)
+READLINE_PREFIX ?= $(shell brew --prefix readline 2>/dev/null)
+
+ifeq ($(strip $(READLINE_CFLAGS)),)
+  ifneq ($(strip $(READLINE_PREFIX)),)
+    CPPFLAGS += -I$(READLINE_PREFIX)/include
+    LDFLAGS  += -L$(READLINE_PREFIX)/lib
+    LDLIBS   += -lreadline -lncurses
+  else
+    LDLIBS   += -lreadline
+    ifeq ($(UNAME_S),Darwin)
+      LDLIBS += -lncurses
+    endif
+  endif
+else
+  CPPFLAGS += $(READLINE_CFLAGS)
+  LDLIBS   += $(READLINE_LIBS)
+endif
+
+ifeq ($(ENABLE_NLS),1)
+  LDLIBS += -lintl
+endif
+
+# ---------- Targets ----------
+.PHONY: all clean install install-user uninstall uninstall-user run test print-vars version
+
+all: $(TARGET)
+
+$(TARGET): $(CONFIG_HEADER) $(OBJS) | $(BIN_DIR)
+	$(call log,LD,$@)
+	$(Q)$(CC) $(LDFLAGS) $(OBJS) $(LDLIBS) -o $@
+
+$(BIN_DIR):
+	$(call log,MKDIR,$@)
+	$(Q)mkdir -p $@
+	$(Q)mkdir -p $(BUILD_DIR)
+	$(Q)touch $(CLEAN_STAMP)
+
+$(OBJ_DIR)/%.o: %.c $(CONFIG_HEADER)
+	$(call log,CC,$<)
+	$(Q)mkdir -p $(@D)
+	$(Q)mkdir -p $(BUILD_DIR)
+	$(Q)touch $(CLEAN_STAMP)
+	$(Q)$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c $< -o $@
+
+$(CONFIG_HEADER): $(CONFIG_HEADER_IN) | $(BUILD_DIR)
+	$(call log,GEN,$@)
+	$(Q)mkdir -p "$(BUILD_DIR)"
+	$(Q)sed \
+		-e 's|@PACKAGE@|$(PACKAGE)|g' \
+		-e 's|@PACKAGE_NAME@|$(PACKAGE_NAME)|g' \
+		-e 's|@PACKAGE_BUGREPORT@|$(PACKAGE_BUGREPORT)|g' \
+		-e 's|@PACKAGE_URL@|$(PACKAGE_URL)|g' \
+		-e 's|@VERSION@|$(VERSION)|g' \
+		-e 's|@LOCALEDIR@|$(LOCALEDIR)|g' \
+		-e 's|@ENABLE_NLS@|$(ENABLE_NLS)|g' \
+		"$(CONFIG_HEADER_IN)" > "$(CONFIG_HEADER).tmp"
+	$(Q)mv "$(CONFIG_HEADER).tmp" "$(CONFIG_HEADER)"
+	$(Q)touch $(CLEAN_STAMP)
+
+$(BUILD_DIR):
+	$(Q)mkdir -p "$(BUILD_DIR)"
+	$(Q)touch $(CLEAN_STAMP)
+
+-include $(DEPS)
+
+# ---------- Safer clean ----------
+clean:
+	$(call log,CLEAN,$(BUILD_DIR))
+	@set -eu; \
+	dir="$(BUILD_DIR)"; \
+	case "$$dir" in \
+		""|"/"|"~"|"."|".."|"../"*|"/Users"|"/home"|"/root") \
+			echo "Refusing to clean unsafe BUILD_DIR='$$dir'"; exit 1 ;; \
+	esac; \
+	if [ ! -f "$(CLEAN_STAMP)" ]; then \
+		echo "Refusing to clean: missing stamp '$(CLEAN_STAMP)'."; \
+		echo "Not created by this Makefile?"; \
+		echo "If you're sure, run: make clean FORCE=1"; \
+		if [ "$${FORCE:-0}" != "1" ]; then exit 1; fi; \
+	fi; \
+	rm -rf -- "$$dir"
+
+install: $(TARGET)
+	$(call log,INSTALL,$(DESTDIR)$(BINDIR)/$(APP))
+	$(Q)set -eu; \
+	dest="$(DESTDIR)$(BINDIR)"; \
+	file="$$dest/$(APP)"; \
+	if ! mkdir -p "$$dest"; then \
+		echo "Install failed: cannot create '$$dest'."; \
+		echo "Try: make install PREFIX=\"$${HOME:-/path/to/home}/.local\""; \
+		echo "Or run with elevated permissions."; \
+		exit 1; \
+	fi; \
+	if [ ! -w "$$dest" ]; then \
+		echo "Install failed: '$$dest' is not writable."; \
+		echo "Try: make install PREFIX=\"$${HOME:-/path/to/home}/.local\""; \
+		echo "Or run with elevated permissions."; \
+		exit 1; \
+	fi; \
+	install -m 0755 "$(TARGET)" "$$file"
+
+install-user: $(TARGET)
+	$(Q)set -eu; \
+	if [ -z "$${HOME:-}" ]; then \
+		echo "Install failed: HOME is not set."; \
+		echo "Try: make install PREFIX=\"/path/to/prefix\""; \
+		exit 1; \
+	fi; \
+	$(MAKE) --no-print-directory install PREFIX="$$HOME/.local"; \
+	echo "Installed to $$HOME/.local/bin/$(APP)."; \
+	echo "If needed, add '$$HOME/.local/bin' to PATH."
+
+uninstall:
+	$(call log,RM,$(DESTDIR)$(BINDIR)/$(APP))
+	$(Q)set -eu; \
+	dest="$(DESTDIR)$(BINDIR)"; \
+	file="$$dest/$(APP)"; \
+	case "$$dest" in \
+		""|"/"|"//"|"///"*|"~"|"."|".."|"../"*|"/Users"|"/home"|"/root") \
+			echo "Refusing unsafe uninstall directory '$$dest'."; \
+			exit 1 ;; \
+	esac; \
+	case "$$file" in \
+		""|"/"|"//"|"///"*|"~"|"."|"..") \
+			echo "Refusing unsafe uninstall path '$$file'."; \
+			exit 1 ;; \
+	esac; \
+	if [ -d "$$file" ]; then \
+		echo "Refusing to uninstall directory '$$file'."; \
+		exit 1; \
+	fi; \
+	if [ ! -e "$$file" ] && [ ! -L "$$file" ]; then \
+		echo "Nothing to uninstall at '$$file'."; \
+		exit 0; \
+	fi; \
+	rm -f -- "$$file"; \
+	echo "Uninstalled '$$file'."
+
+uninstall-user:
+	$(Q)set -eu; \
+	if [ -z "$${HOME:-}" ]; then \
+		echo "Uninstall failed: HOME is not set."; \
+		echo "Try: make uninstall PREFIX=\"/path/to/prefix\""; \
+		exit 1; \
+	fi; \
+	$(MAKE) --no-print-directory uninstall PREFIX="$$HOME/.local"
+
+run: $(TARGET)
+	$(Q)./$(TARGET)
+
+test: $(TARGET)
+	$(call log,TEST,scripts/kbsh-test)
+	$(Q)set -eu; \
+	hello="$$(./$(TARGET) scripts/kbsh-test/hello.sh)"; \
+	if [ "$$hello" != "Hello, World!" ]; then \
+		echo "test failed: hello.sh output mismatch: $$hello"; \
+		exit 1; \
+	fi; \
+	line="$$(./$(TARGET) scripts/kbsh-test/line-continue.sh)"; \
+	if [ "$$line" != "Hello, World!" ]; then \
+		echo "test failed: line-continue.sh output mismatch: $$line"; \
+		exit 1; \
+	fi; \
+	if ./$(TARGET) scripts/kbsh-test/unexpected-eof.sh >/dev/null 2>&1; then \
+		echo "test failed: unexpected-eof.sh should fail"; \
+		exit 1; \
+	fi; \
+	echo "kbsh tests passed"
+
+version:
+	@echo "$(VERSION)"
+
+print-vars:
+	@echo "APP=$(APP)"
+	@echo "PACKAGE=$(PACKAGE)"
+	@echo "VERSION=$(VERSION)"
+	@echo "PREFIX=$(PREFIX)"
+	@echo "BINDIR=$(BINDIR)"
+	@echo "LOCALEDIR=$(LOCALEDIR)"
+	@echo "ENABLE_NLS=$(ENABLE_NLS)"
+	@echo "READLINE_CFLAGS=$(READLINE_CFLAGS)"
+	@echo "READLINE_LIBS=$(READLINE_LIBS)"

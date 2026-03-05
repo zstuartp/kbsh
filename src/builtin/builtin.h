@@ -1,13 +1,12 @@
 /*
  * Find builtin commands.
- * Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -21,14 +20,14 @@
 #ifndef COMMAND_H
 #define COMMAND_H
 
-#define BUILTIN_NOT_FOUND -255
+#include "core/buffer.h"
 
 struct Builtin {
-	const char *call_str;
-	int (*init)(int argc, char **argv);
+	char *command;
+	int (*init)(struct Buffer *b);
 };
 
-int kbsh_run_builtin(int argc, char **argv);
+int kbsh_find_builtin(struct Buffer *b);
 
 extern struct Builtin bi_cd;
 extern struct Builtin bi_exit;

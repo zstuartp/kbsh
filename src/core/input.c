@@ -1,13 +1,12 @@
 /*
  * Manage user input.
- * Copyright (C) 2011. 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,104 +19,32 @@
 
 #include <config.h>
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 
 #include <readline/readline.h>
 #include <readline/history.h>
 
-#include "localize.h"
-
 #include "core/kbsh.h"
-#include "core/buffer.h"
 #include "core/input.h"
-#include "core/parse.h"
+#include "core/env.h"
 #include "core/prompt.h"
-#include "core/var.h"
 
-static struct Buffer buffer;
+static char history_fname[PATH_MAX + 32];
 
-static char *kbsh_gets(char *prompt_in)
-{
-	char *line = NULL;
-	size_t line_size;
-
-	if (!prompt_in)
-		prompt_in = "kbsh$ ";
-
-	line = readline(prompt_in);
-
-	if (!line) {
-		/* EOF */
-		printf("exit\n");
-		return line;
-	} else if (*line) {
-		add_history(line);
-		write_history(history_fname);
-	}
-
-	/* Readline doesn't include the newline char so we add it */
-	line_size = strlen(line) + 1;
-	line = realloc(line, sizeof(*line) * (line_size));
-	if (!line)
-		kbsh_exit(errno);
-	strcat(line, "\n");
-
-	return line;/* return readline buffer */
-}
-
-static char *kbsh_input_gets_more(void)
-{
-	char *temp = NULL;
-	while (1) {
-		if (temp) {
-			free(temp);
-			temp = NULL;
-		}
-		temp = kbsh_gets(prompt.scnd_ch);
-		if (!temp)
-			return temp;
-		if (*temp == '#')
-			continue;
-		else
-			break;
-	}
-	return temp;
-}
-
-static void kbsh_create_histfname(void)
-{
-	history_fname = NULL;
-	size_t size = 0;
-	const char *name = "/.kbsh_history";
-	char *home_dir = kbsh_var_getval("HOME");
-	if (!home_dir)
-		return;
-
-	size = strlen(name); 
-	size += strlen(home_dir) + 1;
-
-	history_fname = malloc((sizeof(char)) * size);
-	if (!history_fname)
-		kbsh_exit(errno);
-
-	strcpy(history_fname, home_dir);
-	strcat(history_fname, name);
-}
+static void kbsh_create_histfname(void);
 
 void kbsh_input_exit(void)
 {
-	free(history_fname);
 	kbsh_prompt_exit();
-	kbsh_buffer_reset(&buffer);
 }
 
 void kbsh_input_init(void)
 {
 	kbsh_clean = kbsh_input_exit;
-	kbsh_mode = INTR_M;
-	kbsh_buffer_gets_more = kbsh_input_gets_more;
 	kbsh_prompt_init();
 	kbsh_create_histfname();
 	rl_outstream = stderr;
@@ -125,33 +52,43 @@ void kbsh_input_init(void)
 	rl_bind_key('\t', rl_complete);
 }
 
-void kbsh_input_main(void)
+void kbsh_input_save_history(void)
 {
-	while (1) {
-		parse_err = 0;
+	write_history(history_fname);
+}
 
-		while (1) {
-			/* Input loop */
-			if (buffer.full) {
-				free(buffer.full);
-				buffer.full = NULL;
-			}
-			buffer.full = kbsh_gets(prompt.crnt_ch);
-			if (!buffer.full) {
-				puts("exit");
-				kbsh_exit(0);
-			}
-			if (buffer.full && *buffer.full) {
-				if (*buffer.full == '#')
-					continue;
-				break;
-			}
-		}
+/*
+ * Read one line via readline.  Returns a malloc'd string that the caller
+ * must free, or NULL on EOF.  Adds non-empty lines to readline history.
+ * The returned string includes a trailing newline to match kbsh_run_read_line.
+ */
+char *kbsh_input_readline(const char *prompt_str)
+{
+	char *line = NULL;
+	size_t line_size;
 
-		kbsh_parse(&buffer);
-		if (parse_err)
-			continue;
-		kbsh_main((int)buffer.word_used, buffer.word);
-		kbsh_buffer_reset(&buffer);
-	}
+	line = readline(prompt_str);
+
+	if (!line)
+		return NULL;
+
+	if (*line)
+		add_history(line);
+
+	/* readline omits the newline; add it to match kbsh_run_read_line */
+	line_size = strlen(line) + 2;
+	line = realloc(line, line_size);
+	if (!line)
+		kbsh_exit(errno);
+	strcat(line, "\n");
+
+	return line;
+}
+
+static void kbsh_create_histfname(void)
+{
+	if (!env.home)
+		return;
+	snprintf(history_fname, sizeof(history_fname),
+		 "%s/.kbsh_history", env.home);
 }

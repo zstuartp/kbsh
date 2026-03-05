@@ -1,13 +1,12 @@
 /*
  * Input buffer.
- * Copyright (C) 2011, 2012 Zack Parsons <k3bacon@gmail.com>
+ * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
  *
  * Kbsh is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * the Free Software Foundation, version 3.
  *
  * Kbsh is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -35,9 +34,5 @@ struct Buffer {
 	size_t word_used;	/* number of (char *)s used in .word */
 };
 
-char *(*kbsh_buffer_gets_more)(void);
-
-struct Buffer *kbsh_buffer_add_bytes(struct Buffer *b, size_t bytes);
-void kbsh_buffer_reset(struct Buffer *b);
 
 #endif/*BUFFER_H*/

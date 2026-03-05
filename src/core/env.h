@@ -1,5 +1,5 @@
 /*
- * Find builtin commands.
+ * Manage environmental variables.
  * Copyright (C) 2011 Zack Parsons <parsons.zackary@gmail.com>
  *
  * This file is part of kbsh.
@@ -17,32 +17,22 @@
  * along with kbsh.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <config.h>
+#ifndef ENV_H
+#define ENV_H
 
-#include <string.h>
-#include <errno.h>
+#include <limits.h>
 
-#include "core/kbsh.h"
-#include "core/buffer.h"
-#include "builtin/builtin.h"
+struct Env {
+	char cwd[PATH_MAX + 1];
+	char *cwd_end;
+	char *home;
+	char *user;
+};
 
-int kbsh_find_builtin(struct Buffer *b)
-{
-	if (!b)
-		kbsh_exit(EINVAL);
-	/* find builtin commands */
-	if (!b->word || !*b->word)/* empty input */
-		goto found;
+extern struct Env env;
 
-	if (!strcmp(b->word[0], bi_cd.command)) {
-		bi_cd.init(b);
-		goto found;
-	} else if (!strcmp(b->word[0], bi_exit.command)) {
-		bi_exit.init(b);
-		goto found;
-	}
+void kbsh_env_exit(void);
+void kbsh_env_init(void);
+void kbsh_env_update(void);
 
-	return 0; /* Continue and find external commands */
-found:
-	return 1; /* Builtin command found; Don't continue */
-}
+#endif/*ENV_H*/

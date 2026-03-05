@@ -136,7 +136,6 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 				    struct kbsh_arena *arena)
 {
 	char *line = NULL;
-	int line_from_heap = 0;
 	unsigned char *arena_buf = NULL;
 	size_t len;
 	size_t old_len;
@@ -149,12 +148,10 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 				? prompt.scnd_ch
 				: prompt.crnt_ch;
 		line = kbsh_input_readline(rl_prompt);
-		if (!line) {
+		if (!line)
 			printf("exit\n");
-		}
 	} else {
 		line = kbsh_run_read_line(in);
-		line_from_heap = 1;
 	}
 
 	if (state->state_id == KBSH_STATE_READ_MORE) {
@@ -170,15 +167,10 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 		old_len = strlen(state->buffer.full);
 		len = strlen(line);
 		if (kbsh_arena_alloc(arena, old_len + len + 1, 1, &arena_buf) !=
-		    KBSH_ARENA_SUCCESS) {
-			if (line_from_heap)
-				free(line);
+		    KBSH_ARENA_SUCCESS)
 			kbsh_exit(1);
-		}
 		memcpy(arena_buf, state->buffer.full, old_len);
 		memcpy(arena_buf + old_len, line, len + 1);
-		if (line_from_heap)
-			free(line);
 		state->buffer.full = (char *)arena_buf;
 		state->buffer.full_size = old_len + len + 1;
 		return KBSH_EVENT_OKAY;
@@ -187,22 +179,14 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 	if (!line)
 		return KBSH_EVENT_END_OF_FILE;
 
-	if (line[0] == '#' || line[0] == '\n' || line[0] == '\0') {
-		if (line_from_heap)
-			free(line);
+	if (line[0] == '#' || line[0] == '\n' || line[0] == '\0')
 		return KBSH_EVENT_SKIP;
-	}
 
 	len = strlen(line);
 	if (kbsh_arena_alloc(arena, len + 1, 1, &arena_buf) !=
-	    KBSH_ARENA_SUCCESS) {
-		if (line_from_heap)
-			free(line);
+	    KBSH_ARENA_SUCCESS)
 		kbsh_exit(1);
-	}
 	memcpy(arena_buf, line, len + 1);
-	if (line_from_heap)
-		free(line);
 	state->buffer.full = (char *)arena_buf;
 	state->buffer.full_size = len + 1;
 	return KBSH_EVENT_OKAY;
@@ -432,48 +416,9 @@ static void kbsh_fork(struct Buffer *b)
 
 static char *kbsh_run_read_line(FILE *fp)
 {
-	char *line = NULL;
-	size_t cap = 0;
-#if defined(KBSH_PORTABLE_PROFILE)
-	size_t used = 0;
-	char *new_buf = NULL;
-	char *chunk = NULL;
-#else
-	ssize_t len = 0;
-#endif
+	static char s_line_buf[4096];
 
-#if defined(KBSH_PORTABLE_PROFILE)
-	cap = 128;
-	line = malloc(cap);
-	if (!line)
-		kbsh_exit(errno);
-	line[0] = '\0';
-	while (1) {
-		chunk = fgets(line + used, (int)(cap - used), fp);
-		if (!chunk) {
-			if (used == 0) {
-				free(line);
-				return NULL;
-			}
-			break;
-		}
-		used += strlen(line + used);
-		if (used > 0 && line[used - 1] == '\n')
-			break;
-		if (feof(fp))
-			break;
-		new_buf = realloc(line, cap * 2);
-		if (!new_buf)
-			kbsh_exit(errno);
-		line = new_buf;
-		cap *= 2;
-	}
-#else
-	len = getline(&line, &cap, fp);
-	if (len < 0) {
-		free(line);
+	if (!fgets(s_line_buf, sizeof(s_line_buf), fp))
 		return NULL;
-	}
-#endif
-	return line;
+	return s_line_buf;
 }

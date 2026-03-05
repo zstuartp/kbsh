@@ -279,6 +279,44 @@ static void parse_default(struct kbsh_parse_state *ps)
 	ps->bpind++;
 }
 
+/* ------------------------------------------------------------------
+ * fast_tokenize  —  replace whitespace runs with 0x1d in-place; return
+ * word count.  strspn/strcspn are SIMD-accelerated on Apple Silicon so
+ * this touches each cache line once vs. the per-char switch doing it
+ * twice (pre-scan + main scan) plus a full memcpy.
+ * ------------------------------------------------------------------ */
+static size_t fast_tokenize(char *buf, size_t len)
+{
+	char *p   = buf;
+	char *end = buf + len;
+	size_t words = 0;
+	size_t span;
+
+	/* strip trailing newline so it never lands in a word */
+	if (len > 0 && buf[len - 1] == '\n') {
+		buf[len - 1] = '\0';
+		end--;
+	}
+
+	while (p < end && *p != '\0') {
+		/* leading / inter-word whitespace → separator sentinels */
+		span = strspn(p, " \t");
+		if (span > 0) {
+			memset(p, '\x1d', span);
+			p += span;
+			if (p >= end || *p == '\0')
+				break;
+		}
+		/* word run */
+		span = strcspn(p, " \t");
+		if (span == 0)
+			break;
+		words++;
+		p += span;
+	}
+	return words;
+}
+
 enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 				  struct kbsh_arena *arena,
 				  int last_status)
@@ -296,6 +334,18 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 
 	ps.buffer->full_size = strlen(ps.buffer->full);
 	ps.buffer->pars_size = ps.buffer->full_size + 1;
+
+	/* Fast path: no special chars → zero-copy, single-pass.
+	 * pars aliases full (same cache lines, no second allocation).
+	 * strtok will write \0 into the buffer in-place; safe because
+	 * the arena rewinds the whole command at CLEANUP anyway. */
+	if (strpbrk(ps.buffer->full, "$~\\'\"") == NULL) {
+		ps.argno = fast_tokenize(ps.buffer->full, ps.buffer->full_size);
+		ps.buffer->pars      = ps.buffer->full;
+		ps.buffer->pars_size = ps.buffer->full_size + 1;
+		kbsh_parse_tok(&ps);
+		return KBSH_PARSE_OK;
+	}
 
 	if (env.home) {
 		size_t home_len;
@@ -413,6 +463,28 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 	}
 
 	while (1) {
+		/* Run-length: bulk-copy unambiguous plain chars via SIMD strcspn.
+		 * Fires when not inside any quote and no pending escape — i.e. the
+		 * common case for unquoted arguments that happen to contain $.
+		 * Reduces dispatch iterations from O(chars) to O(special-chars). */
+		if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote) {
+			const char *src = ps.buffer->full + ps.bfind;
+			size_t run = strcspn(src, "\n\t \"'\\~$");
+
+			if (run > 0) {
+				if (!ps.in_arg) {
+					ps.in_arg = 1;
+					ps.argno++;
+				}
+				memcpy(ps.buffer->pars + ps.bpind, src, run);
+				ps.bfind += run;
+				ps.bpind += run;
+				if (ps.buffer->full[ps.bfind] == '\0')
+					break;
+				continue;
+			}
+		}
+
 		switch (ps.buffer->full[ps.bfind]) {
 		case '\0':
 			ps.loop = 0;

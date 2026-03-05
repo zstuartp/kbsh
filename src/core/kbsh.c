@@ -100,6 +100,9 @@ int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out)
 		kbsh_exit(1);
 	}
 
+	if (mode == KBSH_RUN_MODE_INTERACTIVE)
+		kbsh_env_update();
+
 	while (state.state_id != KBSH_STATE_EXIT) {
 		switch (state.state_id) {
 		case KBSH_STATE_READ:
@@ -133,6 +136,7 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 				    struct kbsh_arena *arena)
 {
 	char *line = NULL;
+	int line_from_heap = 0;
 	unsigned char *arena_buf = NULL;
 	size_t len;
 	size_t old_len;
@@ -150,6 +154,7 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 		}
 	} else {
 		line = kbsh_run_read_line(in);
+		line_from_heap = 1;
 	}
 
 	if (state->state_id == KBSH_STATE_READ_MORE) {
@@ -166,12 +171,14 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 		len = strlen(line);
 		if (kbsh_arena_alloc(arena, old_len + len + 1, 1, &arena_buf) !=
 		    KBSH_ARENA_SUCCESS) {
-			free(line);
+			if (line_from_heap)
+				free(line);
 			kbsh_exit(1);
 		}
 		memcpy(arena_buf, state->buffer.full, old_len);
 		memcpy(arena_buf + old_len, line, len + 1);
-		free(line);
+		if (line_from_heap)
+			free(line);
 		state->buffer.full = (char *)arena_buf;
 		state->buffer.full_size = old_len + len + 1;
 		return KBSH_EVENT_OKAY;
@@ -181,18 +188,21 @@ static enum kbsh_event_id get_input(struct kbsh_state *state,
 		return KBSH_EVENT_END_OF_FILE;
 
 	if (line[0] == '#' || line[0] == '\n' || line[0] == '\0') {
-		free(line);
+		if (line_from_heap)
+			free(line);
 		return KBSH_EVENT_SKIP;
 	}
 
 	len = strlen(line);
 	if (kbsh_arena_alloc(arena, len + 1, 1, &arena_buf) !=
 	    KBSH_ARENA_SUCCESS) {
-		free(line);
+		if (line_from_heap)
+			free(line);
 		kbsh_exit(1);
 	}
 	memcpy(arena_buf, line, len + 1);
-	free(line);
+	if (line_from_heap)
+		free(line);
 	state->buffer.full = (char *)arena_buf;
 	state->buffer.full_size = len + 1;
 	return KBSH_EVENT_OKAY;
@@ -218,8 +228,7 @@ static enum kbsh_event_id parse_input(struct kbsh_state *state,
 static enum kbsh_event_id exec_cmd(struct kbsh_state *state,
 				   struct kbsh_arena *arena)
 {
-	(void)arena;
-	kbsh_main(&state->buffer);
+	kbsh_main(&state->buffer, arena);
 	state->last_command_status = 0;
 	if (state->run_mode_id == KBSH_RUN_MODE_INTERACTIVE)
 		kbsh_input_save_history();
@@ -377,7 +386,7 @@ static void do_assignment(const char *word)
 	setenv(name, eq + 1, 1);
 }
 
-void kbsh_main(struct Buffer *b)
+void kbsh_main(struct Buffer *b, struct kbsh_arena *arena)
 {
 	size_t i;
 
@@ -394,9 +403,8 @@ void kbsh_main(struct Buffer *b)
 		}
 	}
 
-	if (!kbsh_find_builtin(b))
+	if (!kbsh_find_builtin(b, arena))
 		kbsh_fork(b);
-	kbsh_env_update();
 }
 
 static int kbsh_exec(char **argums)

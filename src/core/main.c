@@ -51,9 +51,8 @@ int main(int argc, char **argv)
 	program_name = argv[0];
 	lose = 0;
 
-	setlocale(LC_ALL, "");
-
 #if ENABLE_NLS
+	setlocale(LC_ALL, "");
 	bindtextdomain(PACKAGE, LOCALEDIR);
 	textdomain(PACKAGE);
 #endif /*ENABLE_NLS*/

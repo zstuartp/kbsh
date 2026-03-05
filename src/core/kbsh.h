@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 
+#include "core/arena.h"
 #include "core/buffer.h"
 
 extern char *program_name;
@@ -23,6 +24,6 @@ void kbsh_exit(int exit_status);
 
 int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out);
 
-void kbsh_main(struct Buffer *buffer);
+void kbsh_main(struct Buffer *buffer, struct kbsh_arena *arena);
 
 #endif /*KBSH_H*/

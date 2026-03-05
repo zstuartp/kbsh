@@ -9,7 +9,7 @@
 #include "core/buffer.h"
 #include "core/kbsh.h"
 
-int kbsh_find_builtin(struct Buffer *b)
+int kbsh_find_builtin(struct Buffer *b, struct kbsh_arena *arena)
 {
 	if (!b)
 		kbsh_exit(EINVAL);
@@ -18,10 +18,16 @@ int kbsh_find_builtin(struct Buffer *b)
 		goto found;
 
 	if (!strcmp(b->word[0], bi_cd.command)) {
-		bi_cd.init(b);
+		bi_cd.init(b, arena);
+		goto found;
+	} else if (!strcmp(b->word[0], bi_echo.command)) {
+		bi_echo.init(b, arena);
+		goto found;
+	} else if (!strcmp(b->word[0], bi_printf.command)) {
+		bi_printf.init(b, arena);
 		goto found;
 	} else if (!strcmp(b->word[0], bi_exit.command)) {
-		bi_exit.init(b);
+		bi_exit.init(b, arena);
 		goto found;
 	}
 

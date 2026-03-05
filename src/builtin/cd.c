@@ -15,12 +15,13 @@
 #include "core/env.h"
 #include "core/kbsh.h"
 
-int kbsh_builtin_cd(struct Buffer *b)
+int kbsh_builtin_cd(struct Buffer *b, struct kbsh_arena *arena)
 {
 	static char cd_path[PATH_MAX + 1];
 	size_t up;
 	size_t remaining;
 
+	(void)arena;
 	if (!b)
 		kbsh_exit(EINVAL);
 
@@ -52,8 +53,7 @@ int kbsh_builtin_cd(struct Buffer *b)
 		perror("kbsh: cd");
 	else {
 	done:
-		if (!getcwd(env.cwd, sizeof(env.cwd)))
-			kbsh_exit(errno);
+		kbsh_env_update();
 		if (setenv("PWD", env.cwd, 1))
 			perror("kbsh");
 	}

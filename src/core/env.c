@@ -17,15 +17,12 @@ void kbsh_env_exit(void) { return; }
 
 void kbsh_env_init(void)
 {
-	if (!getcwd(env.cwd, sizeof(env.cwd)))
-		kbsh_exit(errno);
 	env.home = getenv("HOME");
 	if (!env.home)
 		kbsh_exit(errno);
 	env.user = getenv("USER");
 	if (!env.user)
 		kbsh_exit(errno);
-	kbsh_env_get_cwd_end();
 }
 
 void kbsh_env_update(void)

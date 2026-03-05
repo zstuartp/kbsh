@@ -29,13 +29,34 @@ static size_t expand_escapes(const char *src, char *dst, size_t dst_size)
 		}
 		p++; /* skip backslash */
 		switch (*p) {
-		case 'n':  dst[out++] = '\n'; p++; break;
-		case 't':  dst[out++] = '\t'; p++; break;
-		case 'r':  dst[out++] = '\r'; p++; break;
-		case '\\': dst[out++] = '\\'; p++; break;
-		case '\'': dst[out++] = '\''; p++; break;
-		case '"':  dst[out++] = '"';  p++; break;
-		case '0':  dst[out++] = '\0'; p++; break;
+		case 'n':
+			dst[out++] = '\n';
+			p++;
+			break;
+		case 't':
+			dst[out++] = '\t';
+			p++;
+			break;
+		case 'r':
+			dst[out++] = '\r';
+			p++;
+			break;
+		case '\\':
+			dst[out++] = '\\';
+			p++;
+			break;
+		case '\'':
+			dst[out++] = '\'';
+			p++;
+			break;
+		case '"':
+			dst[out++] = '"';
+			p++;
+			break;
+		case '0':
+			dst[out++] = '\0';
+			p++;
+			break;
 		default:
 			/* unrecognised — emit backslash and the char */
 			if (out + 2 < dst_size) {
@@ -61,13 +82,13 @@ static size_t expand_escapes(const char *src, char *dst, size_t dst_size)
 int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 {
 	const char *fmt = NULL;
-	size_t arg_idx   = 2; /* b->word[0]=printf, b->word[1]=format */
+	size_t arg_idx = 2; /* b->word[0]=printf, b->word[1]=format */
 	unsigned char *arena_buf = NULL;
-	size_t buf_size  = 0;
-	char *work       = NULL;
+	size_t buf_size = 0;
+	char *work = NULL;
 	size_t work_size = 0;
-	const char *p    = NULL;
-	size_t mark      = 0;
+	const char *p = NULL;
+	size_t mark = 0;
 
 	if (!b)
 		kbsh_exit(EINVAL);
@@ -84,14 +105,14 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 	 * expanded format string plus any individual numeric conversions.
 	 * Allocate min(available, 64K) — generous for any reasonable printf.
 	 */
-	buf_size  = 65536;
-	mark      = kbsh_arena_mark(arena);
-	if (kbsh_arena_alloc(arena, buf_size, 1, &arena_buf)
-	    != KBSH_ARENA_SUCCESS) {
+	buf_size = 65536;
+	mark = kbsh_arena_mark(arena);
+	if (kbsh_arena_alloc(arena, buf_size, 1, &arena_buf) !=
+	    KBSH_ARENA_SUCCESS) {
 		fputs("printf: out of arena memory\n", stderr);
 		return 1;
 	}
-	work      = (char *)arena_buf;
+	work = (char *)arena_buf;
 	work_size = buf_size;
 
 	/* Expand escape sequences in the format string into work buffer. */
@@ -112,9 +133,10 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 			break;
 
 		case 's': {
-			const char *arg = (arg_idx < b->word_used
-					   && b->word[arg_idx])
-					  ? b->word[arg_idx++] : "";
+			const char *arg =
+			    (arg_idx < b->word_used && b->word[arg_idx])
+				? b->word[arg_idx++]
+				: "";
 			fputs(arg, stdout);
 			p++;
 			break;
@@ -122,36 +144,40 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 
 		case 'd':
 		case 'i': {
-			const char *arg = (arg_idx < b->word_used
-					   && b->word[arg_idx])
-					  ? b->word[arg_idx++] : "0";
+			const char *arg =
+			    (arg_idx < b->word_used && b->word[arg_idx])
+				? b->word[arg_idx++]
+				: "0";
 			printf("%d", atoi(arg));
 			p++;
 			break;
 		}
 
 		case 'u': {
-			const char *arg = (arg_idx < b->word_used
-					   && b->word[arg_idx])
-					  ? b->word[arg_idx++] : "0";
+			const char *arg =
+			    (arg_idx < b->word_used && b->word[arg_idx])
+				? b->word[arg_idx++]
+				: "0";
 			printf("%u", (unsigned int)strtoul(arg, NULL, 10));
 			p++;
 			break;
 		}
 
 		case 'f': {
-			const char *arg = (arg_idx < b->word_used
-					   && b->word[arg_idx])
-					  ? b->word[arg_idx++] : "0";
+			const char *arg =
+			    (arg_idx < b->word_used && b->word[arg_idx])
+				? b->word[arg_idx++]
+				: "0";
 			printf("%f", strtod(arg, NULL));
 			p++;
 			break;
 		}
 
 		case 'g': {
-			const char *arg = (arg_idx < b->word_used
-					   && b->word[arg_idx])
-					  ? b->word[arg_idx++] : "0";
+			const char *arg =
+			    (arg_idx < b->word_used && b->word[arg_idx])
+				? b->word[arg_idx++]
+				: "0";
 			printf("%g", strtod(arg, NULL));
 			p++;
 			break;

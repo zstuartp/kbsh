@@ -19,9 +19,8 @@ int kbsh_builtin_echo(struct Buffer *b, struct kbsh_arena *arena)
 		kbsh_exit(EINVAL);
 
 	/* -n suppresses the trailing newline */
-	if (b->word_used > 1 && b->word[1]
-	    && b->word[1][0] == '-' && b->word[1][1] == 'n'
-	    && b->word[1][2] == '\0') {
+	if (b->word_used > 1 && b->word[1] && b->word[1][0] == '-' &&
+	    b->word[1][1] == 'n' && b->word[1][2] == '\0') {
 		newline = 0;
 		i = 2;
 	}

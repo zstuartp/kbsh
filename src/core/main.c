@@ -171,6 +171,11 @@ int main(int argc, char **argv)
 
 	kbsh_init(); /* initializer for kbsh */
 
+	/* Use a 64 KB stdout buffer so builtin output (echo, printf) is
+	 * batched into far fewer write() syscalls.  The default on macOS
+	 * is only 1 KB, causing ~6 flushes per 6 KB echo argument. */
+	setvbuf(stdout, NULL, _IOFBF, 65536);
+
 	if (kbsh_options.c) {
 		/* Command string mode: -c [string] [arg ...] */
 		int run_status;

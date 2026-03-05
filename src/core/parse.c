@@ -280,41 +280,87 @@ static void parse_default(struct kbsh_parse_state *ps)
 }
 
 /* ------------------------------------------------------------------
- * fast_tokenize  —  replace whitespace runs with 0x1d in-place; return
- * word count.  strspn/strcspn are SIMD-accelerated on Apple Silicon so
- * this touches each cache line once vs. the per-char switch doing it
- * twice (pre-scan + main scan) plus a full memcpy.
+ * KBSH_FAST_WORD_MAX — hard cap on words in the fast path.
+ * Commands with more than this many whitespace-separated tokens fall
+ * through to the slow path.  512 is unreachable in practice.
  * ------------------------------------------------------------------ */
-static size_t fast_tokenize(char *buf, size_t len)
+#define KBSH_FAST_WORD_MAX 512
+
+/* ------------------------------------------------------------------
+ * kbsh_parse_fast  —  one-pass tokenizer for plain-text commands.
+ *
+ * Replaces three separate libc scans:
+ *   strpbrk(6KB)       — old fast-path guard
+ *   strcspn × words    — old fast_tokenize
+ *   strtok_r(6KB)      — old kbsh_parse_tok
+ *
+ * Single combined pass: strcspn(p, " \t$~\\'\"") per word segment
+ * simultaneously finds word boundaries AND detects special chars.
+ * If a special char is found, returns 0 so kbsh_parse falls through
+ * to the full slow path unchanged (buf is unmodified at that point).
+ * On success, word pointers are committed to the arena and 1 is
+ * returned.
+ * ------------------------------------------------------------------ */
+static int kbsh_parse_fast(struct Buffer *b, struct kbsh_arena *arena)
 {
-	char *p   = buf;
-	char *end = buf + len;
-	size_t words = 0;
+	char *word_starts[KBSH_FAST_WORD_MAX];
+	size_t word_lens[KBSH_FAST_WORD_MAX];
+	size_t nwords = 0;
+	char *p = b->full;
 	size_t span;
+	unsigned char *out;
+	size_t i;
 
-	/* strip trailing newline so it never lands in a word */
-	if (len > 0 && buf[len - 1] == '\n') {
-		buf[len - 1] = '\0';
-		end--;
-	}
-
-	while (p < end && *p != '\0') {
-		/* leading / inter-word whitespace → separator sentinels */
-		span = strspn(p, " \t");
-		if (span > 0) {
-			memset(p, '\x1d', span);
-			p += span;
-			if (p >= end || *p == '\0')
-				break;
-		}
-		/* word run */
-		span = strcspn(p, " \t");
-		if (span == 0)
+	while (*p != '\0') {
+		/* skip inter-word whitespace and trailing newline */
+		p += strspn(p, " \t\n");
+		if (*p == '\0')
 			break;
-		words++;
+
+		/* word run: stop at whitespace, newline, or any special char.
+		 * If span == 0 the current char is special — abort to slow
+		 * path without having modified buf at all.
+		 * If span > 0 but the terminating char is neither whitespace
+		 * nor NUL nor newline, a special char follows — same. */
+		span = strcspn(p, " \t\n$~\\'\"");
+		if (span == 0)
+			return 0; /* leading special char — slow path */
+
+		if (p[span] != '\0' && p[span] != ' ' && p[span] != '\t' &&
+		    p[span] != '\n')
+			return 0; /* special char after word — slow path */
+
+		if (nwords >= KBSH_FAST_WORD_MAX)
+			return 0; /* too many words — slow path */
+
+		word_starts[nwords] = p;
+		word_lens[nwords] = span;
+		nwords++;
 		p += span;
 	}
-	return words;
+
+	/* All words are plain.  Commit: null-terminate each word in the
+	 * arena buffer and build the word pointer array. */
+	if (kbsh_arena_alloc(
+		arena, sizeof(char *) * (nwords + 1), sizeof(void *), &out) !=
+	    KBSH_ARENA_SUCCESS)
+		kbsh_exit(ENOMEM);
+
+	b->word = (char **)out;
+	for (i = 0; i < nwords; i++) {
+		/* Null-terminate each word in-place in the arena buffer.
+		 * The char at [word_lens[i]] is guaranteed to be ' ', '\t',
+		 * '\n', or '\0' — all safe to overwrite with '\0'. */
+		word_starts[i][word_lens[i]] = '\0';
+		b->word[i] = word_starts[i];
+	}
+	b->word[nwords] = NULL;
+	b->word_used = nwords;
+	b->word_size = nwords + 1;
+	b->pars = b->full;
+	b->pars_size = b->full_size + 1;
+
+	return 1;
 }
 
 enum kbsh_parse_result kbsh_parse(struct Buffer *b,
@@ -335,17 +381,10 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 	ps.buffer->full_size = strlen(ps.buffer->full);
 	ps.buffer->pars_size = ps.buffer->full_size + 1;
 
-	/* Fast path: no special chars → zero-copy, single-pass.
-	 * pars aliases full (same cache lines, no second allocation).
-	 * strtok will write \0 into the buffer in-place; safe because
-	 * the arena rewinds the whole command at CLEANUP anyway. */
-	if (strpbrk(ps.buffer->full, "$~\\'\"") == NULL) {
-		ps.argno = fast_tokenize(ps.buffer->full, ps.buffer->full_size);
-		ps.buffer->pars      = ps.buffer->full;
-		ps.buffer->pars_size = ps.buffer->full_size + 1;
-		kbsh_parse_tok(&ps);
+	/* Fast path: one combined SIMD scan — no special chars, no copies,
+	 * no strtok.  Falls through if any special char is encountered. */
+	if (kbsh_parse_fast(ps.buffer, arena))
 		return KBSH_PARSE_OK;
-	}
 
 	if (env.home) {
 		size_t home_len;
@@ -463,10 +502,11 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 	}
 
 	while (1) {
-		/* Run-length: bulk-copy unambiguous plain chars via SIMD strcspn.
-		 * Fires when not inside any quote and no pending escape — i.e. the
-		 * common case for unquoted arguments that happen to contain $.
-		 * Reduces dispatch iterations from O(chars) to O(special-chars). */
+		/* Run-length: bulk-copy unambiguous plain chars via SIMD
+		 * strcspn. Fires when not inside any quote and no pending
+		 * escape — i.e. the common case for unquoted arguments that
+		 * happen to contain $. Reduces dispatch iterations from
+		 * O(chars) to O(special-chars). */
 		if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote) {
 			const char *src = ps.buffer->full + ps.bfind;
 			size_t run = strcspn(src, "\n\t \"'\\~$");

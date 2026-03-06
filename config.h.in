@@ -15,4 +15,7 @@
 #define LOCALEDIR "@LOCALEDIR@"
 #define ENABLE_NLS @ENABLE_NLS@
 
+/* Feature availability (detected at build time) */
+#define HAVE_POSIX_SPAWN @HAVE_POSIX_SPAWN@
+
 #endif /* KBSH_CONFIG_H */

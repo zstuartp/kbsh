@@ -72,6 +72,9 @@ CSTD ?= $(KBSH_STD_DEFAULT)
 POSIX_C_SOURCE ?= $(KBSH_POSIX_DEFAULT)
 
 CPPFLAGS += -I$(BUILD_DIR) -I$(SRC_DIR) -D_POSIX_C_SOURCE=$(POSIX_C_SOURCE)
+
+# ---------- Feature detection ----------
+HAVE_POSIX_SPAWN := $(shell echo 'int x=0;' | $(CC) -D_POSIX_C_SOURCE=200112L -include spawn.h -x c -c - -o /dev/null 2>/dev/null && echo 1 || echo 0)
 CFLAGS	 += -std=$(CSTD) -Wall -Wextra -Werror -pedantic
 
 DEBUG ?= 0
@@ -133,6 +136,7 @@ $(BUILD_DIR)/.config-vars: .FORCE | $(BUILD_DIR)
 	'VERSION=$(VERSION)' \
 	'LOCALEDIR=$(LOCALEDIR)' \
 	'ENABLE_NLS=$(ENABLE_NLS)' \
+	'HAVE_POSIX_SPAWN=$(HAVE_POSIX_SPAWN)' \
 	> $@.tmp
 	$(Q)cmp -s $@.tmp $@ 2>/dev/null || mv $@.tmp $@
 	$(Q)rm -f $@.tmp
@@ -147,6 +151,7 @@ $(CONFIG_HEADER): $(CONFIG_HEADER_IN) $(BUILD_DIR)/.config-vars | $(BUILD_DIR)
 	-e 's|@VERSION@|$(VERSION)|g' \
 	-e 's|@LOCALEDIR@|$(LOCALEDIR)|g' \
 	-e 's|@ENABLE_NLS@|$(ENABLE_NLS)|g' \
+	-e 's|@HAVE_POSIX_SPAWN@|$(HAVE_POSIX_SPAWN)|g' \
 	"$(CONFIG_HEADER_IN)" > "$(CONFIG_HEADER).tmp"
 	$(Q)mv "$(CONFIG_HEADER).tmp" "$(CONFIG_HEADER)"
 	$(Q)touch $(CLEAN_STAMP)

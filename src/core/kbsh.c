@@ -10,6 +10,10 @@
 
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(HAVE_POSIX_SPAWN) && HAVE_POSIX_SPAWN
+#include <spawn.h>
+extern char **environ;
+#endif
 
 #include "localize.h"
 
@@ -68,7 +72,9 @@ static enum kbsh_event_id exec_cmd(struct kbsh_state *, struct kbsh_arena *);
 static enum kbsh_event_id do_cleanup(struct kbsh_state *, struct kbsh_arena *);
 static enum kbsh_state_id kbsh_transition(const struct kbsh_state *);
 
+#if !defined(HAVE_POSIX_SPAWN) || !HAVE_POSIX_SPAWN
 static int kbsh_exec(char **argums);
+#endif
 static void kbsh_fork(struct Buffer *b);
 static char *kbsh_run_read_line(FILE *fp);
 
@@ -390,20 +396,35 @@ void kbsh_main(struct Buffer *b, struct kbsh_arena *arena)
 		kbsh_fork(b);
 }
 
+#if !defined(HAVE_POSIX_SPAWN) || !HAVE_POSIX_SPAWN
 static int kbsh_exec(char **argums)
 {
-	int err = 0;
+	int err = execvp(argums[0], argums);
 
-	err = execvp(argums[0], argums);
 	if (err) {
 		fprintf(stderr, "%s: ", program_name);
 		perror(argums[0]);
 	}
 	return err;
 }
+#endif
 
 static void kbsh_fork(struct Buffer *b)
 {
+#if defined(HAVE_POSIX_SPAWN) && HAVE_POSIX_SPAWN
+	pid_t pid;
+	int err = posix_spawnp(&pid, b->word[0], NULL, NULL, b->word, environ);
+
+	if (err != 0) {
+		fprintf(stderr,
+			"%s: %s: %s\n",
+			program_name,
+			b->word[0],
+			strerror(err));
+		return;
+	}
+	waitpid(pid, NULL, 0);
+#else
 	pid_t pid = fork();
 
 	if (!pid)
@@ -412,6 +433,7 @@ static void kbsh_fork(struct Buffer *b)
 		wait(NULL);
 	if (pid < 0)
 		kbsh_exit(errno);
+#endif
 }
 
 static char *kbsh_run_read_line(FILE *fp)

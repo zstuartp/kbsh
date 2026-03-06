@@ -272,6 +272,16 @@ test: $(TARGET)
 	echo "test failed: unexpected-eof.sh crashed (status=$$unexpected_status)"; \
 	exit 1; \
 	fi; \
+	pipe="$$(./$(TARGET) test/smoke/pipe.sh)"; \
+	if [ "$$pipe" != "hello" ]; then \
+	echo "test failed: pipe.sh output mismatch: $$pipe"; \
+	exit 1; \
+	fi; \
+	redir="$$(./$(TARGET) test/smoke/redir.sh)"; \
+	if [ "$$redir" != "redir" ]; then \
+	echo "test failed: redir.sh output mismatch: $$redir"; \
+	exit 1; \
+	fi; \
 	echo "kbsh tests passed"
 
 test-posix: $(TARGET)

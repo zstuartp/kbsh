@@ -7,6 +7,7 @@
 
 #include "core/arena.h"
 #include "core/buffer.h"
+#include "core/pipeline.h"
 
 extern char *program_name;
 extern void (*kbsh_clean)(void);
@@ -24,6 +25,6 @@ void kbsh_exit(int exit_status);
 
 int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out);
 
-void kbsh_main(struct Buffer *buffer, struct kbsh_arena *arena);
+void kbsh_main(struct kbsh_pipeline *pl, struct kbsh_arena *arena);
 
 #endif /*KBSH_H*/

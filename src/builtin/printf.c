@@ -10,7 +10,6 @@
 
 #include "builtin/builtin.h"
 #include "core/arena.h"
-#include "core/buffer.h"
 #include "core/kbsh.h"
 
 /*
@@ -79,10 +78,10 @@ static size_t expand_escapes(const char *src, char *dst, size_t dst_size)
  * Supported conversions: %s  %d  %i  %u  %f  %g  %%
  * Escape sequences in the format string: \n \t \r \\ \' \" \0
  */
-int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
+int kbsh_builtin_printf(struct kbsh_cmd *cmd, struct kbsh_arena *arena)
 {
 	const char *fmt = NULL;
-	size_t arg_idx = 2; /* b->word[0]=printf, b->word[1]=format */
+	int arg_idx = 2;
 	unsigned char *arena_buf = NULL;
 	size_t buf_size = 0;
 	char *work = NULL;
@@ -90,15 +89,15 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 	const char *p = NULL;
 	size_t mark = 0;
 
-	if (!b)
+	if (!cmd)
 		kbsh_exit(EINVAL);
 
-	if (b->word_used < 2 || !b->word[1]) {
+	if (cmd->argc < 2 || !cmd->argv[1]) {
 		fputs("printf: missing format string\n", stderr);
 		return 1;
 	}
 
-	fmt = b->word[1];
+	fmt = cmd->argv[1];
 
 	/*
 	 * Allocate a work buffer from the arena.  We need enough room for the
@@ -134,8 +133,8 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 
 		case 's': {
 			const char *arg =
-			    (arg_idx < b->word_used && b->word[arg_idx])
-				? b->word[arg_idx++]
+			    (arg_idx < cmd->argc && cmd->argv[arg_idx])
+				? cmd->argv[arg_idx++]
 				: "";
 			fputs(arg, stdout);
 			p++;
@@ -145,8 +144,8 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 		case 'd':
 		case 'i': {
 			const char *arg =
-			    (arg_idx < b->word_used && b->word[arg_idx])
-				? b->word[arg_idx++]
+			    (arg_idx < cmd->argc && cmd->argv[arg_idx])
+				? cmd->argv[arg_idx++]
 				: "0";
 			printf("%d", atoi(arg));
 			p++;
@@ -155,8 +154,8 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 
 		case 'u': {
 			const char *arg =
-			    (arg_idx < b->word_used && b->word[arg_idx])
-				? b->word[arg_idx++]
+			    (arg_idx < cmd->argc && cmd->argv[arg_idx])
+				? cmd->argv[arg_idx++]
 				: "0";
 			printf("%u", (unsigned int)strtoul(arg, NULL, 10));
 			p++;
@@ -165,8 +164,8 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 
 		case 'f': {
 			const char *arg =
-			    (arg_idx < b->word_used && b->word[arg_idx])
-				? b->word[arg_idx++]
+			    (arg_idx < cmd->argc && cmd->argv[arg_idx])
+				? cmd->argv[arg_idx++]
 				: "0";
 			printf("%f", strtod(arg, NULL));
 			p++;
@@ -175,8 +174,8 @@ int kbsh_builtin_printf(struct Buffer *b, struct kbsh_arena *arena)
 
 		case 'g': {
 			const char *arg =
-			    (arg_idx < b->word_used && b->word[arg_idx])
-				? b->word[arg_idx++]
+			    (arg_idx < cmd->argc && cmd->argv[arg_idx])
+				? cmd->argv[arg_idx++]
 				: "0";
 			printf("%g", strtod(arg, NULL));
 			p++;

@@ -5,6 +5,7 @@
 
 #include "core/arena.h"
 #include "core/buffer.h"
+#include "core/pipeline.h"
 
 enum kbsh_parse_result {
 	KBSH_PARSE_OK,
@@ -15,7 +16,8 @@ enum kbsh_parse_result {
 	KBSH_PARSE_ERROR_UNEXPECTED_EOF
 };
 
-enum kbsh_parse_result kbsh_parse(struct Buffer *b,
+enum kbsh_parse_result kbsh_parse(struct kbsh_pipeline *pl,
+				  struct Buffer *staging,
 				  struct kbsh_arena *arena,
 				  int last_status);
 

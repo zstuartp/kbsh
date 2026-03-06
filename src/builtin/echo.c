@@ -6,29 +6,27 @@
 #include <stdio.h>
 
 #include "builtin/builtin.h"
-#include "core/buffer.h"
 #include "core/kbsh.h"
 
-int kbsh_builtin_echo(struct Buffer *b, struct kbsh_arena *arena)
+int kbsh_builtin_echo(struct kbsh_cmd *cmd, struct kbsh_arena *arena)
 {
-	size_t i = 1;
+	int i = 1;
 	int newline = 1;
 
 	(void)arena;
-	if (!b)
+	if (!cmd)
 		kbsh_exit(EINVAL);
 
-	/* -n suppresses the trailing newline */
-	if (b->word_used > 1 && b->word[1] && b->word[1][0] == '-' &&
-	    b->word[1][1] == 'n' && b->word[1][2] == '\0') {
+	if (cmd->argc > 1 && cmd->argv[1] && cmd->argv[1][0] == '-' &&
+	    cmd->argv[1][1] == 'n' && cmd->argv[1][2] == '\0') {
 		newline = 0;
 		i = 2;
 	}
 
-	for (; i < b->word_used && b->word[i]; i++) {
-		if (i > (newline ? 1u : 2u))
+	for (; i < cmd->argc && cmd->argv[i]; i++) {
+		if (i > (newline ? 1 : 2))
 			putchar(' ');
-		fputs(b->word[i], stdout);
+		fputs(cmd->argv[i], stdout);
 	}
 
 	if (newline)

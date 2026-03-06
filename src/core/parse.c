@@ -15,6 +15,7 @@
 #include "core/env.h"
 #include "core/kbsh.h"
 #include "core/parse.h"
+#include "core/pipeline.h"
 
 struct kbsh_parse_state {
 	struct Buffer *buffer;
@@ -38,7 +39,8 @@ struct kbsh_parse_state {
 };
 
 static const char *kbsh_get_syntax_err_msg(const struct kbsh_parse_state *ps);
-static void kbsh_parse_tok(struct kbsh_parse_state *ps);
+static void kbsh_build_pipeline(struct kbsh_parse_state *ps,
+				struct kbsh_pipeline *pl);
 
 static void parse_newline(struct kbsh_parse_state *ps)
 {
@@ -279,17 +281,18 @@ static void parse_default(struct kbsh_parse_state *ps)
 	ps->bpind++;
 }
 
-enum kbsh_parse_result kbsh_parse(struct Buffer *b,
+enum kbsh_parse_result kbsh_parse(struct kbsh_pipeline *pl,
+				  struct Buffer *staging,
 				  struct kbsh_arena *arena,
 				  int last_status)
 {
 	struct kbsh_parse_state ps;
 
-	if (!b)
+	if (!pl || !staging)
 		kbsh_exit(EINVAL);
 
 	memset(&ps, 0, sizeof(ps));
-	ps.buffer = b;
+	ps.buffer = staging;
 	ps.arena = arena;
 	ps.last_status = last_status;
 	ps.loop = 1;
@@ -328,7 +331,7 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 		 * O(chars) to O(special-chars). */
 		if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote) {
 			const char *src = ps.buffer->full + ps.bfind;
-			size_t run = strcspn(src, "\n\t \"'\\~$");
+			size_t run = strcspn(src, "\n\t \"'\\~$|><");
 
 			if (run > 0) {
 				if (!ps.in_arg) {
@@ -378,6 +381,51 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 			parse_dollar(&ps);
 			break;
 
+		case '|':
+			if (!ps.in_quote && !ps.ignore_next) {
+				if (ps.in_arg) {
+					ps.buffer->pars[ps.bpind++] = 0x1d;
+					ps.in_arg = 0;
+				}
+				ps.buffer->pars[ps.bpind++] = '|';
+				ps.buffer->pars[ps.bpind++] = 0x1d;
+			} else {
+				parse_default(&ps);
+			}
+			break;
+
+		case '>':
+			if (!ps.in_quote && !ps.ignore_next) {
+				if (ps.in_arg) {
+					ps.buffer->pars[ps.bpind++] = 0x1d;
+					ps.in_arg = 0;
+				}
+				if (ps.buffer->full[ps.bfind + 1] == '>') {
+					ps.buffer->pars[ps.bpind++] = '>';
+					ps.buffer->pars[ps.bpind++] = '>';
+					ps.bfind++;
+				} else {
+					ps.buffer->pars[ps.bpind++] = '>';
+				}
+				ps.buffer->pars[ps.bpind++] = 0x1d;
+			} else {
+				parse_default(&ps);
+			}
+			break;
+
+		case '<':
+			if (!ps.in_quote && !ps.ignore_next) {
+				if (ps.in_arg) {
+					ps.buffer->pars[ps.bpind++] = 0x1d;
+					ps.in_arg = 0;
+				}
+				ps.buffer->pars[ps.bpind++] = '<';
+				ps.buffer->pars[ps.bpind++] = 0x1d;
+			} else {
+				parse_default(&ps);
+			}
+			break;
+
 		default:
 			parse_default(&ps);
 			break;
@@ -400,7 +448,7 @@ enum kbsh_parse_result kbsh_parse(struct Buffer *b,
 		return ps.syntax_err.type;
 	}
 
-	kbsh_parse_tok(&ps);
+	kbsh_build_pipeline(&ps, pl);
 	return KBSH_PARSE_OK;
 }
 
@@ -425,42 +473,92 @@ static const char *kbsh_get_syntax_err_msg(const struct kbsh_parse_state *ps)
 	return NULL;
 }
 
-/* Direct word-build: one forward pass over pars[0..bpind-1].
- * Replaces strtok (which acquires a global lock and re-scans) with a
- * simple pointer walk.  Words are delimited by 0x1d bytes written by
- * parse_space; we null-terminate each in place and record the start
- * pointer in a stack array before committing to the arena. */
-static void kbsh_parse_tok(struct kbsh_parse_state *ps)
+/* commit_cmd_argv: arena-allocate argv for one pipeline stage. */
+static void commit_cmd_argv(struct kbsh_cmd *cmd,
+			    char **words,
+			    size_t nwords,
+			    struct kbsh_arena *arena)
+{
+	unsigned char *out;
+
+	if (kbsh_arena_alloc(arena,
+			     sizeof(char *) * (nwords + 1),
+			     sizeof(void *),
+			     &out) != KBSH_ARENA_SUCCESS)
+		kbsh_exit(ENOMEM);
+	cmd->argv = (char **)out;
+	if (nwords)
+		memcpy(cmd->argv, words, sizeof(char *) * nwords);
+	cmd->argv[nwords] = NULL;
+	cmd->argc = (int)nwords;
+}
+
+/* kbsh_build_pipeline: one forward pass over pars[0..bpind-1].
+ *
+ * Tokens are delimited by 0x1d bytes.  Metacharacter tokens —
+ * '|', '>', '>>', '<' — are recognised and split the flat token
+ * stream into pipeline stages and per-stage redirect descriptors.
+ * All other tokens are appended to the current stage's argv.
+ */
+static void kbsh_build_pipeline(struct kbsh_parse_state *ps,
+				struct kbsh_pipeline *pl)
 {
 	char *tmp_words[512];
 	size_t nwords = 0;
 	char *p = ps->buffer->pars;
 	char *end = p + ps->bpind;
-	unsigned char *out;
+	int pending_redir = -1;
+	struct kbsh_cmd *cmd;
+
+	memset(pl, 0, sizeof(*pl));
+	pl->ncmds = 1;
+	cmd = &pl->cmds[0];
 
 	while (p < end) {
+		char *word;
+		size_t wlen;
+
 		/* null-terminate and skip separator bytes */
 		while (p < end && (unsigned char)*p == 0x1d)
 			*p++ = '\0';
 		if (p >= end)
 			break;
-		/* record word start, then advance past word body */
-		if (nwords < 512)
-			tmp_words[nwords++] = p;
+
+		/* find end of this token */
+		word = p;
 		while (p < end && (unsigned char)*p != 0x1d)
 			p++;
+		wlen = (size_t)(p - word);
+
+		if (wlen == 1 && word[0] == '|') {
+			/* Pipe: commit current stage, advance */
+			commit_cmd_argv(cmd, tmp_words, nwords, ps->arena);
+			nwords = 0;
+			pending_redir = -1;
+			if (pl->ncmds < KBSH_PIPELINE_MAX)
+				cmd = &pl->cmds[pl->ncmds++];
+		} else if (wlen == 1 && word[0] == '>') {
+			pending_redir = KBSH_REDIR_OUT;
+		} else if (wlen == 2 && word[0] == '>' && word[1] == '>') {
+			pending_redir = KBSH_REDIR_APPEND;
+		} else if (wlen == 1 && word[0] == '<') {
+			pending_redir = KBSH_REDIR_IN;
+		} else if (pending_redir >= 0) {
+			/* This token is the redirect target filename */
+			if (cmd->nredirs < KBSH_CMD_REDIR_MAX) {
+				cmd->redirs[cmd->nredirs].type =
+				    (enum kbsh_redir_type)pending_redir;
+				cmd->redirs[cmd->nredirs].target = word;
+				cmd->nredirs++;
+			}
+			pending_redir = -1;
+		} else {
+			/* Regular argv word */
+			if (nwords < 512)
+				tmp_words[nwords++] = word;
+		}
 	}
 
-	if (kbsh_arena_alloc(ps->arena,
-			     sizeof(char *) * (nwords + 1),
-			     sizeof(void *),
-			     &out) != KBSH_ARENA_SUCCESS)
-		kbsh_exit(ENOMEM);
-
-	ps->buffer->word = (char **)out;
-	if (nwords)
-		memcpy(ps->buffer->word, tmp_words, sizeof(char *) * nwords);
-	ps->buffer->word[nwords] = NULL;
-	ps->buffer->word_used = nwords;
-	ps->buffer->word_size = nwords + 1;
+	/* Commit the final pipeline stage */
+	commit_cmd_argv(cmd, tmp_words, nwords, ps->arena);
 }

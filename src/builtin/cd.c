@@ -11,23 +11,22 @@
 #include <unistd.h>
 
 #include "builtin/builtin.h"
-#include "core/buffer.h"
 #include "core/env.h"
 #include "core/kbsh.h"
 
-int kbsh_builtin_cd(struct Buffer *b, struct kbsh_arena *arena)
+int kbsh_builtin_cd(struct kbsh_cmd *cmd, struct kbsh_arena *arena)
 {
 	static char cd_path[PATH_MAX + 1];
-	size_t up;
+	int up;
 	size_t remaining;
 
 	(void)arena;
-	if (!b)
+	if (!cmd)
 		kbsh_exit(EINVAL);
 
-	if (!b->word_used || !b->word[0])
+	if (cmd->argc == 0 || !cmd->argv[0])
 		goto end;
-	if (b->word_used < 2) {
+	if (cmd->argc < 2) {
 		if (chdir(env.home))
 			perror("kbsh: cd");
 		else
@@ -39,13 +38,13 @@ int kbsh_builtin_cd(struct Buffer *b, struct kbsh_arena *arena)
 	cd_path[0] = '\0';
 	remaining = sizeof(cd_path);
 
-	while (b->word[up]) {
+	while (cmd->argv[up]) {
 		if (cd_path[0] != '\0') {
 			strncat(cd_path, " ", remaining - 1);
 			remaining -= 1;
 		}
-		strncat(cd_path, b->word[up], remaining - 1);
-		remaining -= strlen(b->word[up]);
+		strncat(cd_path, cmd->argv[up], remaining - 1);
+		remaining -= strlen(cmd->argv[up]);
 		up++;
 	}
 

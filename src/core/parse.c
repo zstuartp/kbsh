@@ -25,6 +25,7 @@ struct kbsh_parse_state {
 		enum kbsh_parse_result type;
 	} syntax_err;
 	int last_status;
+	int expansion_status;
 	size_t argno;
 	size_t bfind;
 	size_t bpind;
@@ -175,6 +176,7 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 	char *command_text;
 	unsigned char *arena_buf;
 	const char *value;
+	int cmd_status;
 	size_t cmd_end;
 	size_t cmd_len;
 	size_t name_len;
@@ -232,9 +234,8 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 		}
 		return;
 	} else if (nc == '(') {
-		if (!kbsh_find_command_sub_end(ps->buffer->full,
-					       ps->bfind + 2,
-					       &cmd_end)) {
+		if (!kbsh_find_command_sub_end(
+			ps->buffer->full, ps->bfind + 2, &cmd_end)) {
 			ps->need_more = 1;
 			ps->loop = 0;
 			return;
@@ -252,9 +253,9 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 		}
 		command_text[cmd_len] = '\0';
 
-		(void)kbsh_capture_command_output(command_text,
-						 ps->arena,
-						 &cmd_output);
+		cmd_status = kbsh_capture_command_output(
+		    command_text, ps->arena, &cmd_output);
+		ps->expansion_status = cmd_status;
 		ps->bfind = cmd_end;
 
 		if (cmd_output && *cmd_output && !ps->in_arg) {
@@ -450,7 +451,11 @@ enum kbsh_parse_result kbsh_parse(struct kbsh_pipeline *pl,
 		 * escape — i.e. the common case for unquoted arguments that
 		 * happen to contain $. Reduces dispatch iterations from
 		 * O(chars) to O(special-chars). */
-		if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote) {
+		if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote &&
+		    ps.buffer->full[ps.bfind] == '2' &&
+		    ps.buffer->full[ps.bfind + 1] == '>') {
+			/* Let the main switch emit 2> / 2>&1 as one token. */
+		} else if (!ps.ignore_next && !ps.in_squote && !ps.in_dquote) {
 			const char *src = ps.buffer->full + ps.bfind;
 			size_t run = strcspn(src, "\n\t \"'\\~$|><");
 
@@ -500,6 +505,28 @@ enum kbsh_parse_result kbsh_parse(struct kbsh_pipeline *pl,
 
 		case '$':
 			parse_dollar(&ps);
+			break;
+
+		case '2':
+			if (!ps.in_quote && !ps.ignore_next &&
+			    ps.buffer->full[ps.bfind + 1] == '>') {
+				if (ps.in_arg) {
+					ps.buffer->pars[ps.bpind++] = 0x1d;
+					ps.in_arg = 0;
+				}
+				ps.buffer->pars[ps.bpind++] = '2';
+				ps.buffer->pars[ps.bpind++] = '>';
+				ps.bfind++;
+				if (ps.buffer->full[ps.bfind + 1] == '&' &&
+				    ps.buffer->full[ps.bfind + 2] == '1') {
+					ps.buffer->pars[ps.bpind++] = '&';
+					ps.buffer->pars[ps.bpind++] = '1';
+					ps.bfind += 2;
+				}
+				ps.buffer->pars[ps.bpind++] = 0x1d;
+			} else {
+				parse_default(&ps);
+			}
 			break;
 
 		case '|':
@@ -570,6 +597,7 @@ enum kbsh_parse_result kbsh_parse(struct kbsh_pipeline *pl,
 	}
 
 	kbsh_build_pipeline(&ps, pl);
+	pl->expansion_status = ps.expansion_status;
 	return KBSH_PARSE_OK;
 }
 
@@ -602,10 +630,9 @@ static void commit_cmd_argv(struct kbsh_cmd *cmd,
 {
 	unsigned char *out;
 
-	if (kbsh_arena_alloc(arena,
-			     sizeof(char *) * (nwords + 1),
-			     sizeof(void *),
-			     &out) != KBSH_ARENA_SUCCESS)
+	if (kbsh_arena_alloc(
+		arena, sizeof(char *) * (nwords + 1), sizeof(void *), &out) !=
+	    KBSH_ARENA_SUCCESS)
 		kbsh_exit(ENOMEM);
 	cmd->argv = (char **)out;
 	if (nwords)
@@ -616,8 +643,9 @@ static void commit_cmd_argv(struct kbsh_cmd *cmd,
 
 /* kbsh_build_pipeline: one forward pass over pars[0..bpind-1].
  *
- * Tokens are delimited by 0x1d bytes.  Metacharacter tokens —
- * '|', '>', '>>', '<' — are recognised and split the flat token
+ * Tokens are delimited by 0x1d bytes.  Metacharacter tokens
+ * '|', '>', '>>', '<', '2>', '2>&1' are recognised and split the
+ * flat token
  * stream into pipeline stages and per-stage redirect descriptors.
  * All other tokens are appended to the current stage's argv.
  */
@@ -658,12 +686,22 @@ static void kbsh_build_pipeline(struct kbsh_parse_state *ps,
 			pending_redir = -1;
 			if (pl->ncmds < KBSH_PIPELINE_MAX)
 				cmd = &pl->cmds[pl->ncmds++];
+		} else if (wlen == 4 && word[0] == '2' && word[1] == '>' &&
+			   word[2] == '&' && word[3] == '1') {
+			if (cmd->nredirs < KBSH_CMD_REDIR_MAX) {
+				cmd->redirs[cmd->nredirs].type =
+				    KBSH_REDIR_ERR_OUT;
+				cmd->redirs[cmd->nredirs].target = NULL;
+				cmd->nredirs++;
+			}
 		} else if (wlen == 1 && word[0] == '>') {
 			pending_redir = KBSH_REDIR_OUT;
 		} else if (wlen == 2 && word[0] == '>' && word[1] == '>') {
 			pending_redir = KBSH_REDIR_APPEND;
 		} else if (wlen == 1 && word[0] == '<') {
 			pending_redir = KBSH_REDIR_IN;
+		} else if (wlen == 2 && word[0] == '2' && word[1] == '>') {
+			pending_redir = KBSH_REDIR_ERR;
 		} else if (pending_redir >= 0) {
 			/* This token is the redirect target filename */
 			if (cmd->nredirs < KBSH_CMD_REDIR_MAX) {

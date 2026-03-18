@@ -8,28 +8,29 @@
 #include "builtin/builtin.h"
 #include "core/kbsh.h"
 
-int kbsh_find_builtin(struct kbsh_cmd *cmd, struct kbsh_arena *arena)
+int kbsh_find_builtin(struct kbsh_cmd *cmd,
+		      struct kbsh_arena *arena,
+		      int *status)
 {
-	if (!cmd)
+	if (!cmd || !status)
 		kbsh_exit(EINVAL);
+	*status = 0;
 	if (cmd->argc == 0 || !cmd->argv || !cmd->argv[0])
-		goto found;
+		return 1;
 
 	if (!strcmp(cmd->argv[0], bi_cd.command)) {
-		bi_cd.init(cmd, arena);
-		goto found;
+		*status = bi_cd.init(cmd, arena);
+		return 1;
 	} else if (!strcmp(cmd->argv[0], bi_echo.command)) {
-		bi_echo.init(cmd, arena);
-		goto found;
+		*status = bi_echo.init(cmd, arena);
+		return 1;
 	} else if (!strcmp(cmd->argv[0], bi_printf.command)) {
-		bi_printf.init(cmd, arena);
-		goto found;
+		*status = bi_printf.init(cmd, arena);
+		return 1;
 	} else if (!strcmp(cmd->argv[0], bi_exit.command)) {
-		bi_exit.init(cmd, arena);
-		goto found;
+		*status = bi_exit.init(cmd, arena);
+		return 1;
 	}
 
 	return 0;
-found:
-	return 1;
 }

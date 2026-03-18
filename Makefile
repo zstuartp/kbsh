@@ -133,11 +133,16 @@ $(BUILD_DIR)/.config-vars: .FORCE | $(BUILD_DIR)
 	'PACKAGE_NAME=$(PACKAGE_NAME)' \
 	'PACKAGE_BUGREPORT=$(PACKAGE_BUGREPORT)' \
 	'PACKAGE_URL=$(PACKAGE_URL)' \
-	'VERSION=$(VERSION)' \
-	'LOCALEDIR=$(LOCALEDIR)' \
-	'ENABLE_NLS=$(ENABLE_NLS)' \
-	'HAVE_POSIX_SPAWN=$(HAVE_POSIX_SPAWN)' \
-	> $@.tmp
+		'VERSION=$(VERSION)' \
+		'LOCALEDIR=$(LOCALEDIR)' \
+		'ENABLE_NLS=$(ENABLE_NLS)' \
+		'PROFILE=$(PROFILE)' \
+		'CSTD=$(CSTD)' \
+		'POSIX_C_SOURCE=$(POSIX_C_SOURCE)' \
+		'DEBUG=$(DEBUG)' \
+		'SANITIZE=$(SANITIZE)' \
+		'HAVE_POSIX_SPAWN=$(HAVE_POSIX_SPAWN)' \
+		> $@.tmp
 	$(Q)cmp -s $@.tmp $@ 2>/dev/null || mv $@.tmp $@
 	$(Q)rm -f $@.tmp
 
@@ -278,16 +283,26 @@ test: $(TARGET)
 	exit 1; \
 	fi; \
 	cmdsub="$$(./$(TARGET) test/smoke/cmdsub.sh)"; \
-	if [ "$$cmdsub" != "subshell" ]; then \
-	echo "test failed: cmdsub.sh output mismatch: $$cmdsub"; \
-	exit 1; \
-	fi; \
-	redir="$$(./$(TARGET) test/smoke/redir.sh)"; \
-	if [ "$$redir" != "redir" ]; then \
-	echo "test failed: redir.sh output mismatch: $$redir"; \
-	exit 1; \
-	fi; \
-	echo "kbsh tests passed"
+		if [ "$$cmdsub" != "subshell" ]; then \
+		echo "test failed: cmdsub.sh output mismatch: $$cmdsub"; \
+		exit 1; \
+		fi; \
+		status="$$(./$(TARGET) test/smoke/status.sh)"; \
+		if [ "$$status" != "$$(printf '1\n1\n1')" ]; then \
+		echo "test failed: status.sh output mismatch: $$status"; \
+		exit 1; \
+		fi; \
+		redir="$$(./$(TARGET) test/smoke/redir.sh)"; \
+		if [ "$$redir" != "redir" ]; then \
+		echo "test failed: redir.sh output mismatch: $$redir"; \
+		exit 1; \
+		fi; \
+		stderr_redir="$$(./$(TARGET) test/smoke/stderr-redir.sh)"; \
+		if [ "$$stderr_redir" != "$$(printf 'stderr\nmerged')" ]; then \
+		echo "test failed: stderr-redir.sh output mismatch: $$stderr_redir"; \
+		exit 1; \
+		fi; \
+		echo "kbsh tests passed"
 
 test-posix: $(TARGET)
 	$(call log,TEST,$(TEST_POSIX_RUNNER))

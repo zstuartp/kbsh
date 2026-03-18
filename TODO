@@ -1,10 +1,9 @@
 KBSH TODO
 
 * Finish the 0.3 line:
-  * Wire parser support for `2>` and `2>&1`
   * Keep `make test`, `make test-posix`, `make test-portable`,
     `make test-asan`, and `make test-ubsan` green
-  * Cut a clean 0.3 release branch once docs/versioning match reality
+  * Cut the `0.3.0` release branch/tag and drop the `-dev` suffix
 
 * Next after 0.3:
   * Conditionals (`if` / `elif` / `else` / `fi`)

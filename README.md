@@ -32,8 +32,8 @@ Current `devel` branch target: `0.3.0-dev`
 Current coverage includes:
 
 - parameter expansion
-- pipelines
-- basic file redirection (`>`, `>>`, `<`)
+- pipelines and exit-status propagation
+- basic file redirection (`>`, `>>`, `<`, `2>`, `2>&1`)
 - custom interactive line editing
 - early command substitution (`$()`)
 

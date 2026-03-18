@@ -10,3 +10,6 @@ pass  cases/100-parameter-expansion.sh
 pass  cases/110-command-substitution.sh
 xfail cases/120-if-then-fi.sh
 xfail cases/130-for-loop.sh
+pass  cases/140-exit-status.sh
+pass  cases/150-question-status.sh
+pass  cases/160-stderr-redirection.sh

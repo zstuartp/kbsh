@@ -11,7 +11,9 @@ struct Builtin {
 	int (*init)(struct kbsh_cmd *cmd, struct kbsh_arena *arena);
 };
 
-int kbsh_find_builtin(struct kbsh_cmd *cmd, struct kbsh_arena *arena);
+int kbsh_find_builtin(struct kbsh_cmd *cmd,
+		      struct kbsh_arena *arena,
+		      int *status);
 
 extern struct Builtin bi_cd;
 extern struct Builtin bi_echo;

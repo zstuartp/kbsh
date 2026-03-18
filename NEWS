@@ -7,16 +7,17 @@ Highlights in devel:
 
 - custom line editor replaces readline in the interactive path
 - parser/executor rewrite adds pipelines and basic file redirection
+- shell status now tracks simple commands, pipelines, redirects, and
+  assignment-only command substitutions
 - arena-backed hot paths remove malloc/free from the core dispatch path
 - `posix_spawnp` is used for external commands when available
 - builtin coverage now includes `cd`, `echo`, `exit`, and `printf`
 - POSIX parameter expansion tests pass
 - command substitution `$()` is present in devel and covered by smoke/POSIX
   tests
+- stderr redirection (`2>`, `2>&1`) is present and covered by smoke/POSIX
+  tests
 
-Known 0.3 branch gaps:
+Still out of scope for 0.3:
 
-- parser wiring for `2>` and `2>&1` is still incomplete, even though executor
-  support exists
-- control-flow syntax (`if`, `for`, `while`, `&&`, `||`) remains out of scope
-  for 0.3
+- control-flow syntax (`if`, `for`, `while`, `&&`, `||`)

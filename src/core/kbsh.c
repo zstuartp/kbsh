@@ -23,10 +23,10 @@ extern char **environ;
 #include "core/arena.h"
 #include "core/buffer.h"
 #include "core/env.h"
-#include "core/pipeline.h"
 #include "core/input.h"
 #include "core/kbsh.h"
 #include "core/parse.h"
+#include "core/pipeline.h"
 #include "core/prompt.h"
 #include "core/sig.h"
 
@@ -58,13 +58,13 @@ enum kbsh_event_id {
 };
 
 struct kbsh_state {
-	enum kbsh_state_id    state_id;
-	enum kbsh_event_id    event_id;
+	enum kbsh_state_id state_id;
+	enum kbsh_event_id event_id;
 	enum kbsh_run_mode_id run_mode_id;
-	int                   last_command_status;
-	size_t                arena_mark;
-	struct Buffer         staging;
-	struct kbsh_pipeline  pipeline;
+	int last_command_status;
+	size_t arena_mark;
+	struct Buffer staging;
+	struct kbsh_pipeline pipeline;
 };
 
 static enum kbsh_event_id get_input(struct kbsh_state *,
@@ -76,15 +76,16 @@ static enum kbsh_event_id exec_cmd(struct kbsh_state *, struct kbsh_arena *);
 static enum kbsh_event_id do_cleanup(struct kbsh_state *, struct kbsh_arena *);
 static enum kbsh_state_id kbsh_transition(const struct kbsh_state *);
 
-static int          kbsh_exec_argv(char **argv);
-static void         kbsh_fork(struct kbsh_cmd *cmd);
-static int          kbsh_apply_redirs(const struct kbsh_cmd *cmd);
-static void         kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
-						 struct kbsh_arena *arena);
-static void         kbsh_exec_pipeline(struct kbsh_pipeline *pl,
+static int kbsh_exec_argv(char **argv);
+static int kbsh_exec_errno_status(int err);
+static int kbsh_fork(struct kbsh_cmd *cmd);
+static int kbsh_apply_redirs(const struct kbsh_cmd *cmd);
+static int kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
 					struct kbsh_arena *arena);
-static char        *kbsh_run_read_line(FILE *fp);
-static int          kbsh_wait_status_code(int wait_status);
+static int kbsh_exec_pipeline(struct kbsh_pipeline *pl,
+			      struct kbsh_arena *arena);
+static char *kbsh_run_read_line(FILE *fp);
+static int kbsh_wait_status_code(int wait_status);
 
 void kbsh_init(void)
 {
@@ -113,6 +114,9 @@ int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out)
 	if (kbsh_arena_init(&arena, pool, sizeof(pool)) != KBSH_ARENA_SUCCESS) {
 		kbsh_exit(1);
 	}
+
+	if (mode == KBSH_RUN_MODE_NONINTERACTIVE && in)
+		setvbuf(in, NULL, _IONBF, 0);
 
 	if (mode == KBSH_RUN_MODE_INTERACTIVE)
 		kbsh_env_update();
@@ -229,8 +233,7 @@ static enum kbsh_event_id parse_input(struct kbsh_state *state,
 static enum kbsh_event_id exec_cmd(struct kbsh_state *state,
 				   struct kbsh_arena *arena)
 {
-	kbsh_main(&state->pipeline, arena);
-	state->last_command_status = 0;
+	state->last_command_status = kbsh_main(&state->pipeline, arena);
 	if (state->run_mode_id == KBSH_RUN_MODE_INTERACTIVE)
 		kbsh_input_save_history();
 	return KBSH_EVENT_OKAY;
@@ -388,17 +391,26 @@ static void do_assignment(const char *word)
 	setenv(name, eq + 1, 1);
 }
 
-void kbsh_main(struct kbsh_pipeline *pl, struct kbsh_arena *arena)
+static int kbsh_exec_errno_status(int err)
 {
+	if (err == ENOENT)
+		return 127;
+	return 126;
+}
+
+int kbsh_main(struct kbsh_pipeline *pl, struct kbsh_arena *arena)
+{
+	int builtin_status;
 	int i;
 	struct kbsh_cmd *cmd;
 
 	if (!pl || pl->ncmds == 0)
-		return;
+		return 0;
 
 	cmd = &pl->cmds[0];
 
-	/* Pure assignment: single command, no redirects, all words are VAR=val */
+	/* Pure assignment: single command, no redirects, all words are VAR=val
+	 */
 	if (pl->ncmds == 1 && cmd->nredirs == 0 && cmd->argc > 0) {
 		for (i = 0; i < cmd->argc; i++) {
 			if (!is_assignment(cmd->argv[i]))
@@ -407,38 +419,39 @@ void kbsh_main(struct kbsh_pipeline *pl, struct kbsh_arena *arena)
 		if (i == cmd->argc) {
 			for (i = 0; i < cmd->argc; i++)
 				do_assignment(cmd->argv[i]);
-			return;
+			return pl->expansion_status;
 		}
 	}
 
 	if (pl->ncmds == 1 && cmd->nredirs == 0) {
 		/* Simple command: builtin inline or posix_spawnp */
-		if (!kbsh_find_builtin(cmd, arena))
-			kbsh_fork(cmd);
-	} else if (pl->ncmds == 1) {
-		/* Single command with redirects */
-		kbsh_exec_single_with_redirs(cmd, arena);
-	} else {
-		/* Pipeline */
-		kbsh_exec_pipeline(pl, arena);
+		if (kbsh_find_builtin(cmd, arena, &builtin_status))
+			return builtin_status;
+		return kbsh_fork(cmd);
 	}
+
+	if (pl->ncmds == 1)
+		return kbsh_exec_single_with_redirs(cmd, arena);
+
+	return kbsh_exec_pipeline(pl, arena);
 }
 
 /* kbsh_exec_argv: exec helper used inside fork children. */
 static int kbsh_exec_argv(char **argv)
 {
-	int err = execvp(argv[0], argv);
+	int saved_errno;
 
-	if (err) {
-		fprintf(stderr, "%s: ", program_name);
-		perror(argv[0]);
-	}
-	return err;
+	execvp(argv[0], argv);
+	saved_errno = errno;
+	fprintf(stderr, "%s: ", program_name);
+	perror(argv[0]);
+	return kbsh_exec_errno_status(saved_errno);
 }
 
 /* kbsh_fork: execute a simple (no pipe, no redir) external command. */
-static void kbsh_fork(struct kbsh_cmd *cmd)
+static int kbsh_fork(struct kbsh_cmd *cmd)
 {
+	int wait_status;
 #if defined(HAVE_POSIX_SPAWN) && HAVE_POSIX_SPAWN
 	pid_t pid;
 	int err =
@@ -450,18 +463,21 @@ static void kbsh_fork(struct kbsh_cmd *cmd)
 			program_name,
 			cmd->argv[0],
 			strerror(err));
-		return;
+		return kbsh_exec_errno_status(err);
 	}
-	waitpid(pid, NULL, 0);
+	if (waitpid(pid, &wait_status, 0) < 0)
+		kbsh_exit(errno);
+	return kbsh_wait_status_code(wait_status);
 #else
 	pid_t pid = fork();
 
 	if (!pid)
 		_exit(kbsh_exec_argv(cmd->argv));
-	else if (pid > 0)
-		wait(NULL);
 	if (pid < 0)
 		kbsh_exit(errno);
+	if (waitpid(pid, &wait_status, 0) < 0)
+		kbsh_exit(errno);
+	return kbsh_wait_status_code(wait_status);
 #endif
 }
 
@@ -526,11 +542,14 @@ static int kbsh_apply_redirs(const struct kbsh_cmd *cmd)
 /* kbsh_exec_single_with_redirs: run one command with redirects.
  * For builtins: save/restore the affected fds around the call.
  * For externals: fork, apply redirects in the child, exec. */
-static void kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
-					 struct kbsh_arena *arena)
+static int kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
+					struct kbsh_arena *arena)
 {
-	int saved[3] = {-1, -1, -1};
+	int builtin_status = 0;
+	int saved[3] = { -1, -1, -1 };
 	int i, target_fd;
+	int status = 0;
+	int wait_status;
 	pid_t pid;
 
 	/* Save fds that will be redirected */
@@ -554,10 +573,13 @@ static void kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
 			saved[target_fd] = dup(target_fd);
 	}
 
-	if (kbsh_apply_redirs(cmd) < 0)
-		goto restore;
-
-	if (!kbsh_find_builtin(cmd, arena)) {
+	if (kbsh_apply_redirs(cmd) < 0) {
+		status = 1;
+	} else if (kbsh_find_builtin(cmd, arena, &builtin_status)) {
+		status = builtin_status;
+		fflush(stdout);
+		fflush(stderr);
+	} else {
 		/* External: fork, child inherits the redirected fds */
 		pid = fork();
 		if (pid == 0) {
@@ -566,29 +588,34 @@ static void kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
 					close(saved[i]);
 			_exit(kbsh_exec_argv(cmd->argv));
 		} else if (pid > 0) {
-			waitpid(pid, NULL, 0);
+			if (waitpid(pid, &wait_status, 0) < 0)
+				kbsh_exit(errno);
+			status = kbsh_wait_status_code(wait_status);
 		} else {
 			kbsh_exit(errno);
 		}
 	}
 
-restore:
 	for (i = 0; i < 3; i++) {
 		if (saved[i] != -1) {
 			dup2(saved[i], i);
 			close(saved[i]);
 		}
 	}
+	return status;
 }
 
 /* kbsh_exec_pipeline: execute a multi-stage pipeline.
  * All stages are forked; builtins run in child processes (POSIX-correct).
  * Pipe fds are wired with dup2; per-stage redirects are applied in children. */
-static void kbsh_exec_pipeline(struct kbsh_pipeline *pl,
-				struct kbsh_arena *arena)
+static int kbsh_exec_pipeline(struct kbsh_pipeline *pl,
+			      struct kbsh_arena *arena)
 {
+	int builtin_status = 0;
+	int last_status = 0;
 	int pipes[KBSH_PIPELINE_MAX - 1][2];
 	pid_t pids[KBSH_PIPELINE_MAX];
+	int wait_status;
 	int i, j;
 
 	for (i = 0; i < pl->ncmds - 1; i++) {
@@ -612,11 +639,14 @@ static void kbsh_exec_pipeline(struct kbsh_pipeline *pl,
 				close(pipes[j][1]);
 			}
 			/* Per-stage redirects override pipe wiring */
-			kbsh_apply_redirs(&pl->cmds[i]);
+			if (kbsh_apply_redirs(&pl->cmds[i]) < 0)
+				_exit(1);
 			/* Run builtin or exec external */
-			if (kbsh_find_builtin(&pl->cmds[i], arena)) {
-				fflush(NULL);
-				_exit(0);
+			if (kbsh_find_builtin(
+				&pl->cmds[i], arena, &builtin_status)) {
+				fflush(stdout);
+				fflush(stderr);
+				_exit(builtin_status);
 			}
 			_exit(kbsh_exec_argv(pl->cmds[i].argv));
 		}
@@ -628,9 +658,14 @@ static void kbsh_exec_pipeline(struct kbsh_pipeline *pl,
 		close(pipes[i][1]);
 	}
 
-	/* Wait for all children */
-	for (i = 0; i < pl->ncmds; i++)
-		waitpid(pids[i], NULL, 0);
+	/* Wait for all children; shell status is the last stage's status. */
+	for (i = 0; i < pl->ncmds; i++) {
+		if (waitpid(pids[i], &wait_status, 0) < 0)
+			kbsh_exit(errno);
+		if (i == pl->ncmds - 1)
+			last_status = kbsh_wait_status_code(wait_status);
+	}
+	return last_status;
 }
 
 static char *kbsh_run_read_line(FILE *fp)
@@ -686,7 +721,8 @@ int kbsh_capture_command_output(const char *command,
 			_exit(1);
 		if (pipe_fds[1] != STDOUT_FILENO)
 			close(pipe_fds[1]);
-		wait_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp_in, stdout);
+		wait_status =
+		    kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp_in, stdout);
 		fflush(NULL);
 		_exit(wait_status);
 	}

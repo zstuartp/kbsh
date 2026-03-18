@@ -1,10 +1,14 @@
 KBSH TODO
 
-* Add scripting:
-  * Conditionals
-  * Loops
-  * Pipe/redirect file streams
-  * Variables
+* Finish the 0.3 line:
+  * Wire parser support for `2>` and `2>&1`
+  * Keep `make test`, `make test-posix`, `make test-portable`,
+    `make test-asan`, and `make test-ubsan` green
+  * Cut a clean 0.3 release branch once docs/versioning match reality
 
-* Add builtin commands:
-  * echo, read, etc.
+* Next after 0.3:
+  * Conditionals (`if` / `elif` / `else` / `fi`)
+  * Loops (`for`, `while`)
+  * List operators (`&&`, `||`)
+  * More shell builtins (`export`, `unset`, `read`)
+  * Shell functions

@@ -25,8 +25,19 @@ kbsh -c 'echo hello'      # command string
 
 ## Status
 
-Work in progress toward POSIX compliance. See `test/posix/cases.list` for
-current coverage.
+Work in progress toward POSIX compliance.
+
+Current `devel` branch target: `0.3.0-dev`
+
+Current coverage includes:
+
+- parameter expansion
+- pipelines
+- basic file redirection (`>`, `>>`, `<`)
+- custom interactive line editing
+- early command substitution (`$()`)
+
+See `test/posix/cases.list` for current POSIX coverage.
 
 ## License
 

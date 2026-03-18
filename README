@@ -14,6 +14,18 @@ Build and install now use the top-level Makefile (no autotools required):
 	make test
 	make install PREFIX=$HOME/.local
 
+Current development target:
+
+	0.3.0-dev
+
+Current devel branch coverage includes:
+
+- parameter expansion
+- pipelines
+- basic file redirection (`>`, `>>`, `<`)
+- custom interactive line editing
+- early command substitution (`$()`)
+
 Version support:
 
 - Default version comes from `./VERSION`.
@@ -22,8 +34,8 @@ Version support:
 
 Autotools files have been removed from this repository.
 
-Source Code: https://github.com/k3bacon/kbsh/
+Source Code: https://github.com/zstuartp/kbsh/
 
-Email: k3bacon@gmail.com
+Email: parsons.zackary@gmail.com
 
 kbsh is free software. See the file ./COPYING for terms and conditions.

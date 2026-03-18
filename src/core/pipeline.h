@@ -9,8 +9,8 @@ enum kbsh_redir_type {
 	KBSH_REDIR_IN = 0, /* <    */
 	KBSH_REDIR_OUT,    /* >    */
 	KBSH_REDIR_APPEND, /* >>   */
-	KBSH_REDIR_ERR,    /* 2>   (v0.3.1) */
-	KBSH_REDIR_ERR_OUT /* 2>&1 (v0.3.1) */
+	KBSH_REDIR_ERR,    /* 2>   (parser wiring pending) */
+	KBSH_REDIR_ERR_OUT /* 2>&1 (parser wiring pending) */
 };
 
 #define KBSH_CMD_REDIR_MAX 8

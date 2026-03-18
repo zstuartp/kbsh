@@ -1,0 +1,22 @@
+kbsh 0.3.0-dev
+================
+
+Unreleased development branch toward the 0.3 series.
+
+Highlights in devel:
+
+- custom line editor replaces readline in the interactive path
+- parser/executor rewrite adds pipelines and basic file redirection
+- arena-backed hot paths remove malloc/free from the core dispatch path
+- `posix_spawnp` is used for external commands when available
+- builtin coverage now includes `cd`, `echo`, `exit`, and `printf`
+- POSIX parameter expansion tests pass
+- command substitution `$()` is present in devel and covered by smoke/POSIX
+  tests
+
+Known 0.3 branch gaps:
+
+- parser wiring for `2>` and `2>&1` is still incomplete, even though executor
+  support exists
+- control-flow syntax (`if`, `for`, `while`, `&&`, `||`) remains out of scope
+  for 0.3

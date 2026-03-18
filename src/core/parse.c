@@ -41,6 +41,9 @@ struct kbsh_parse_state {
 static const char *kbsh_get_syntax_err_msg(const struct kbsh_parse_state *ps);
 static void kbsh_build_pipeline(struct kbsh_parse_state *ps,
 				struct kbsh_pipeline *pl);
+static int kbsh_find_command_sub_end(const char *input,
+				     size_t start,
+				     size_t *end_out);
 
 static void parse_newline(struct kbsh_parse_state *ps)
 {
@@ -168,7 +171,12 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 {
 	char name[64];
 	char status_str[12];
+	char *cmd_output;
+	char *command_text;
+	unsigned char *arena_buf;
 	const char *value;
+	size_t cmd_end;
+	size_t cmd_len;
 	size_t name_len;
 	size_t k;
 	char nc;
@@ -223,6 +231,41 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 				ps->buffer->pars[ps->bpind++] = *p++;
 		}
 		return;
+	} else if (nc == '(') {
+		if (!kbsh_find_command_sub_end(ps->buffer->full,
+					       ps->bfind + 2,
+					       &cmd_end)) {
+			ps->need_more = 1;
+			ps->loop = 0;
+			return;
+		}
+
+		cmd_len = cmd_end - (ps->bfind + 2);
+		if (kbsh_arena_alloc(ps->arena, cmd_len + 1, 1, &arena_buf) !=
+		    KBSH_ARENA_SUCCESS)
+			kbsh_exit(ENOMEM);
+		command_text = (char *)arena_buf;
+		if (cmd_len > 0) {
+			memcpy(command_text,
+			       ps->buffer->full + ps->bfind + 2,
+			       cmd_len);
+		}
+		command_text[cmd_len] = '\0';
+
+		(void)kbsh_capture_command_output(command_text,
+						 ps->arena,
+						 &cmd_output);
+		ps->bfind = cmd_end;
+
+		if (cmd_output && *cmd_output && !ps->in_arg) {
+			ps->in_arg = 1;
+			ps->argno++;
+		}
+		if (cmd_output) {
+			for (k = 0; cmd_output[k] != '\0'; k++)
+				ps->buffer->pars[ps->bpind++] = cmd_output[k];
+		}
+		return;
 	} else if (nc == '{') {
 		ps->bfind += 2;
 		while ((c = ps->buffer->full[ps->bfind]) != '}' && c != '\0' &&
@@ -268,6 +311,84 @@ static void parse_dollar(struct kbsh_parse_state *ps)
 		for (k = 0; value[k] != '\0'; k++)
 			ps->buffer->pars[ps->bpind++] = value[k];
 	}
+}
+
+static int kbsh_find_command_sub_end(const char *input,
+				     size_t start,
+				     size_t *end_out)
+{
+	size_t i;
+	int depth;
+	int in_squote;
+	int in_dquote;
+	int ignore_next;
+	char c;
+
+	if (!input || !end_out)
+		return 0;
+
+	depth = 1;
+	in_squote = 0;
+	in_dquote = 0;
+	ignore_next = 0;
+
+	for (i = start; (c = input[i]) != '\0'; i++) {
+		if (ignore_next) {
+			ignore_next = 0;
+			continue;
+		}
+
+		if (in_squote) {
+			if (c == '\'')
+				in_squote = 0;
+			continue;
+		}
+
+		if (in_dquote) {
+			if (c == '\\') {
+				ignore_next = 1;
+				continue;
+			}
+			if (c == '\"') {
+				in_dquote = 0;
+				continue;
+			}
+			if (c == '$' && input[i + 1] == '(') {
+				depth++;
+				i++;
+			}
+			continue;
+		}
+
+		switch (c) {
+		case '\\':
+			ignore_next = 1;
+			break;
+		case '\'':
+			in_squote = 1;
+			break;
+		case '\"':
+			in_dquote = 1;
+			break;
+		case '$':
+			if (input[i + 1] == '(') {
+				depth++;
+				i++;
+			}
+			break;
+		case ')':
+			depth--;
+			if (depth == 0) {
+				*end_out = i;
+				return 1;
+			}
+			break;
+		default:
+			break;
+		}
+	}
+
+	return 0;
 }
 
 static void parse_default(struct kbsh_parse_state *ps)

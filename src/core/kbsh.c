@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include <fcntl.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #if defined(HAVE_POSIX_SPAWN) && HAVE_POSIX_SPAWN
@@ -83,6 +84,7 @@ static void         kbsh_exec_single_with_redirs(struct kbsh_cmd *cmd,
 static void         kbsh_exec_pipeline(struct kbsh_pipeline *pl,
 					struct kbsh_arena *arena);
 static char        *kbsh_run_read_line(FILE *fp);
+static int          kbsh_wait_status_code(int wait_status);
 
 void kbsh_init(void)
 {
@@ -638,4 +640,100 @@ static char *kbsh_run_read_line(FILE *fp)
 	if (!fgets(s_line_buf, sizeof(s_line_buf), fp))
 		return NULL;
 	return s_line_buf;
+}
+
+int kbsh_capture_command_output(const char *command,
+				struct kbsh_arena *arena,
+				char **output)
+{
+	unsigned char *arena_buf;
+	char io_buf[4096];
+	FILE *tmp_in;
+	FILE *tmp_out;
+	int pipe_fds[2];
+	pid_t pid;
+	int wait_status;
+	size_t trimmed_size;
+	size_t total_read;
+	ssize_t nread;
+
+	if (!command || !arena || !output)
+		kbsh_exit(EINVAL);
+
+	*output = NULL;
+	tmp_in = tmpfile();
+	tmp_out = tmpfile();
+	if (!tmp_in || !tmp_out)
+		kbsh_exit(errno ? errno : 1);
+
+	if (fputs(command, tmp_in) == EOF || fputc('\n', tmp_in) == EOF ||
+	    fflush(tmp_in) == EOF)
+		kbsh_exit(errno ? errno : 1);
+	if (fseek(tmp_in, 0, SEEK_SET) != 0)
+		kbsh_exit(errno ? errno : 1);
+
+	if (pipe(pipe_fds) < 0)
+		kbsh_exit(errno);
+
+	fflush(NULL);
+	pid = fork();
+	if (pid < 0)
+		kbsh_exit(errno);
+
+	if (pid == 0) {
+		close(pipe_fds[0]);
+		if (dup2(pipe_fds[1], STDOUT_FILENO) < 0)
+			_exit(1);
+		if (pipe_fds[1] != STDOUT_FILENO)
+			close(pipe_fds[1]);
+		wait_status = kbsh_run(KBSH_RUN_MODE_NONINTERACTIVE, tmp_in, stdout);
+		fflush(NULL);
+		_exit(wait_status);
+	}
+
+	close(pipe_fds[1]);
+	total_read = 0;
+	while ((nread = read(pipe_fds[0], io_buf, sizeof(io_buf))) > 0) {
+		if (fwrite(io_buf, 1, (size_t)nread, tmp_out) != (size_t)nread)
+			kbsh_exit(errno ? errno : 1);
+		total_read += (size_t)nread;
+	}
+	close(pipe_fds[0]);
+	if (nread < 0)
+		kbsh_exit(errno ? errno : 1);
+
+	if (waitpid(pid, &wait_status, 0) < 0)
+		kbsh_exit(errno);
+
+	if (fseek(tmp_out, 0, SEEK_SET) != 0)
+		kbsh_exit(errno ? errno : 1);
+
+	if (kbsh_arena_alloc(arena, total_read + 1, 1, &arena_buf) !=
+	    KBSH_ARENA_SUCCESS)
+		kbsh_exit(ENOMEM);
+
+	if (total_read > 0 &&
+	    fread(arena_buf, 1, total_read, tmp_out) != total_read) {
+		kbsh_exit(errno ? errno : 1);
+	}
+
+	trimmed_size = total_read;
+	while (trimmed_size > 0 && arena_buf[trimmed_size - 1] == '\n')
+		trimmed_size--;
+	arena_buf[trimmed_size] = '\0';
+	*output = (char *)arena_buf;
+
+	fclose(tmp_in);
+	fclose(tmp_out);
+
+	return kbsh_wait_status_code(wait_status);
+}
+
+static int kbsh_wait_status_code(int wait_status)
+{
+	if (WIFEXITED(wait_status))
+		return WEXITSTATUS(wait_status);
+	if (WIFSIGNALED(wait_status))
+		return 128 + WTERMSIG(wait_status);
+	return 1;
 }

@@ -277,6 +277,11 @@ test: $(TARGET)
 	echo "test failed: pipe.sh output mismatch: $$pipe"; \
 	exit 1; \
 	fi; \
+	cmdsub="$$(./$(TARGET) test/smoke/cmdsub.sh)"; \
+	if [ "$$cmdsub" != "subshell" ]; then \
+	echo "test failed: cmdsub.sh output mismatch: $$cmdsub"; \
+	exit 1; \
+	fi; \
 	redir="$$(./$(TARGET) test/smoke/redir.sh)"; \
 	if [ "$$redir" != "redir" ]; then \
 	echo "test failed: redir.sh output mismatch: $$redir"; \

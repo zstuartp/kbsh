@@ -27,4 +27,8 @@ int kbsh_run(enum kbsh_run_mode_id mode, FILE *in, FILE *out);
 
 void kbsh_main(struct kbsh_pipeline *pl, struct kbsh_arena *arena);
 
+int kbsh_capture_command_output(const char *command,
+				struct kbsh_arena *arena,
+				char **output);
+
 #endif /*KBSH_H*/

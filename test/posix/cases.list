@@ -7,6 +7,6 @@ pass  cases/002-comment-and-blank-lines.sh
 
 # Known gaps tracked toward v1.0.0 POSIX compliance.
 pass  cases/100-parameter-expansion.sh
-xfail cases/110-command-substitution.sh
+pass  cases/110-command-substitution.sh
 xfail cases/120-if-then-fi.sh
 xfail cases/130-for-loop.sh
